@@ -130,6 +130,10 @@ async def research_financials(settings,code,name,assumptions=None,service=None):
     asset={'code':code,'name':name}
     service=service or DataService(settings)
     records,requests=await public_financials(service,[asset],cutoff,history_days=2200)
+    from .public_statement_details import supplement_revenue
+    extra,detail_requests=await supplement_revenue(service,records.get(code,[]),asset,cutoff)
+    records.setdefault(code,[]).extend(extra)
+    requests.extend(detail_requests)
     for record in records.get(code,[]):
         actual=record['row'].get('SECURITY_NAME_ABBR')
         if actual and actual.replace(' ','')!=name.replace(' ',''):
@@ -206,5 +210,5 @@ async def research_financials(settings,code,name,assumptions=None,service=None):
     annual=next((r for r in analysis['rows'] if r['period'].endswith('-12-31')),None)
     if assumptions and annual:
         result['dcf']=dcf_scenarios(annual['values'].get('revenue'),annual['period'],assumptions)
-    result['dcf_status']='modeled_scenarios' if result['dcf'] else 'needs_explicit_assumptions' if annual else 'annual_revenue_not_parsed'
+    result['dcf_status']=('modeled_scenarios' if any('enterprise_value' in x for x in result['dcf']['scenarios'].values()) else 'scenario_inputs_unavailable') if result['dcf'] else 'needs_explicit_assumptions' if annual else 'annual_revenue_not_parsed'
     return result

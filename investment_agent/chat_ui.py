@@ -82,8 +82,8 @@ def render(settings):
                     st.info('研究中 · '+current['progress'])
                     st.caption('可以关闭浏览器；本地网页服务运行时会继续。服务重启后可从证据继续。')
                     if st.button('停止后续研究',key='cancel-'+task['id']): store.cancel(task['id']); st.rerun()
-                elif current['status'] in ('failed','interrupted','cancelled'):
-                    st.warning(current['progress'])
+                elif current['status'] in ('failed','interrupted','cancelled','partial'):
+                    st.warning('部分完成：可在剩余预算内继续已保存的证据与报告。' if current['status']=='partial' else current['progress'])
                     if st.button('从已保存进度继续',key='resume-'+task['id']):
                         store.resume(task['id']); runner.start(task['id'],settings); st.rerun()
             task_status()

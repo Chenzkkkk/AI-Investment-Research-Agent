@@ -23,7 +23,7 @@ PROFILES = {
 }
 API = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
 REPORTS = ('RPT_LICO_FN_CPD','RPT_DMSK_FN_INCOME','RPT_DMSK_FN_BALANCE','RPT_DMSK_FN_CASHFLOW')
-MAP = {'TOTAL_OPERATE_INCOME':'revenue','PARENT_NETPROFIT':'profit_parent','DEDUCT_PARENT_NETPROFIT':'profit_ex_items',
+MAP = {'OPERATE_INCOME':'revenue','TOTAL_OPERATE_INCOME':'total_operating_income','PARENT_NETPROFIT':'profit_parent','DEDUCT_PARENT_NETPROFIT':'profit_ex_items',
        'NETCASH_OPERATE':'operating_cashflow','TOTAL_ASSETS':'assets','TOTAL_LIABILITIES':'liabilities',
        'ACCOUNTS_RECE':'receivables','INVENTORY':'inventory','WEIGHTAVG_ROE':'roe_pct','XSMLL':'gross_margin_pct',
        'TOTAL_PROFIT':'profit_total','INCOME_TAX':'income_tax','TOTAL_EQUITY':'equity_total',
@@ -137,11 +137,14 @@ def rank_candidates(assets,financials,cutoff,style):
     for asset in assets:
         raw=asset['screen_row']; periods=financials.get(asset['code'],{}).get('periods',[])
         latest=periods[0] if periods else {}; values=latest.get('values',{}); derived=latest.get('derived',{})
+        income_basis='total_operating_income' if derived.get('total_operating_income_yoy_pct') is not None else 'revenue'
+        income_growth=derived.get(income_basis+'_yoy_pct')
         price,price_key=metric(raw,[r'最新价',r'收盘价']); amount,amount_key=metric(raw,['成交额'])
         pe,pe_key=metric(raw,[r'市盈率.*TTM',r'PE.*TTM']); momentum,momentum_key=metric(raw,[r'20.*涨跌幅',r'近一月.*涨跌幅',r'近1月.*涨跌幅',r'区间涨跌幅'])
         as_of=observation_date(price_key)
         reasons=[]
         for k in CORE:
+            if k=='revenue' and values.get('total_operating_income') is not None: continue
             if values.get(k) is None: reasons.append('缺少'+FIELDS[k][0])
         if not latest: reasons.append('本次未取到可解析财报，不代表未披露')
         elif (date.fromisoformat(cutoff)-date.fromisoformat(latest['period'])).days>220: reasons.append('财报期间过旧')
@@ -158,15 +161,16 @@ def rank_candidates(assets,financials,cutoff,style):
         if profile['weights']['trend']>0 and momentum is None: reasons.append('缺少20日收益，无法评价本风格趋势')
         if style=='value' and (values.get('operating_cashflow') is None or values['operating_cashflow']<=0): reasons.append('价值风格要求本期经营现金流为正')
         if style in ('short','trend') and momentum is not None and momentum<=0: reasons.append('趋势类风格要求20日趋势为正')
-        if style=='growth' and ((derived.get('revenue_yoy_pct') or 0)<=0 or (derived.get('profit_ex_items_yoy_pct') or 0)<=0): reasons.append('成长风格要求营收与扣非同比均为正')
-        if derived.get('revenue_yoy_pct') is None or derived.get('profit_ex_items_yoy_pct') is None: reasons.append('缺少可比上年同期或同期基数非正')
+        if style=='growth' and ((income_growth or 0)<=0 or (derived.get('profit_ex_items_yoy_pct') or 0)<=0): reasons.append('成长风格要求收入与扣非同比均为正')
+        if income_growth is None or derived.get('profit_ex_items_yoy_pct') is None: reasons.append('缺少可比上年同期或同期基数非正')
         # These are documented heuristic features, not expected returns or a backtest.
         cash=derived.get('cashflow_to_parent_profit')
         quality=(values.get('roe_pct',0) or 0)+max(-2,min(2,cash or 0))*5-(derived.get('debt_to_assets_pct',0) or 0)*.1
-        growth=((derived.get('revenue_yoy_pct') or 0)+(derived.get('profit_ex_items_yoy_pct') or 0))/2
+        growth=((income_growth or 0)+(derived.get('profit_ex_items_yoy_pct') or 0))/2
         rows.append({'code':asset['code'],'name':asset['name'],'segment':asset['segment'],'period':latest.get('period'),
             'published_at':latest.get('published_at'),'as_of':as_of,'price':price,'pe_ttm':pe,'amount_cny':amount,
             'revenue_yoy_pct':derived.get('revenue_yoy_pct'),'profit_ex_items_yoy_pct':derived.get('profit_ex_items_yoy_pct'),
+            'income_growth_yoy_pct':income_growth,'income_growth_basis':FIELDS[income_basis][0],
             'roe_pct':values.get('roe_pct'),'operating_cashflow_cny':values.get('operating_cashflow'),'return20_pct':momentum,
             'eligible':not reasons,'reasons':reasons,'score':None,
             'features':{'quality':quality,'growth':growth,'value':-pe if pe else None,'trend':momentum,'liquidity':amount}})
@@ -251,5 +255,5 @@ async def screen_sector(settings,service,topic,cutoff,progress=None):
             '评分是透明的风格启发式分位数，不是收益概率，也未经策略回测。',
             '质量/成长/估值在相同子行业内比较；不足3个合格同业时该项记中性50分。',
             '公开网页数据服务可能变化；未取得、无可比基数和已披露是不同状态。'],
-        'formula':'质量=ROE+clip(经营现金流/归母利润,-2,2)*5-负债率*0.1；成长=(营收同比+扣非同比)/2；价值=-PE(TTM)；趋势=20日收益；流动性=成交额。先分位，再按所选权重加总。'}
+        'formula':'质量=ROE+clip(经营现金流/归母利润,-2,2)*5-负债率*0.1；成长=(收入同比+扣非同比)/2，收入优先用可比营业总收入，否则营业收入，逐项保留income_growth_basis，不混算同一公司同期口径；价值=-PE(TTM)；趋势=20日收益；流动性=成交额。先分位，再按所选权重加总。'}
     return [next(a for a in assets if a['code']==code) for code in selected],financials,audit

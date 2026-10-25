@@ -35,6 +35,8 @@ def apply_theme():
     [data-testid="stChatMessage"] {background:#111c2c;border:1px solid #263347;border-radius:16px;padding:1.4rem;gap:.75rem;box-sizing:border-box;}
     [data-testid="stChatMessageContent"] {flex:1 1 0%;min-width:0;width:100%;max-width:100%;}
     [data-testid="stChatMessageAvatarAssistant"] {display:none;}
+    [data-testid="stChatMessageAvatarUser"] {background:#203b49!important;color:#a8ced2!important;border:1px solid #365563;border-radius:10px;box-shadow:none;}
+    [data-testid="stChatMessageAvatarUser"] svg {fill:currentColor;color:#a8ced2!important;}
     [data-testid="stTable"] table {width:100%;table-layout:auto;}
     [data-testid="stTable"], [data-testid="stMarkdownContainer"] table {max-width:100%;overflow-x:auto;}
     [data-testid="stTable"] th,[data-testid="stTable"] td {white-space:normal;overflow-wrap:anywhere;padding:.65rem .75rem;border-color:#263347;}

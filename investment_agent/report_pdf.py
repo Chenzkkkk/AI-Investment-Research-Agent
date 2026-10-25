@@ -173,17 +173,25 @@ def _build(result, root, visual_data):
     for warning in data.get('warnings',[]): story.append(Paragraph(escape(warning),styles['body']))
     story.extend([PageBreak(),Paragraph('研究分析与判断',styles['h1'])])
     story.extend(markdown_flow(result.get('report','暂无正文'),styles))
+    if data.get('valuations'):
+        from .valuation_views import valuation_markdown
+        story.extend([PageBreak(),Paragraph('估值模型、情景与假设',styles['h1'])])
+        for item in data['valuations']: story.extend(markdown_flow(valuation_markdown(item),styles))
     if data.get('finances'):
         story.extend([PageBreak(),Paragraph('财务数据明细',styles['h1'])])
         story.append(Paragraph('金额单位：亿元。完整年度与累计中期分别列示，不作年化；未取得的值保留为空。',styles['body']))
         for item in data['finances']:
             story.append(Paragraph(escape(item['label']),styles['h2']))
             frame=financial_frame(item)
-            header='|报告期|营业收入|经营现金流|归母净利润|\n|---|---|---|---|\n'
-            for row in frame.to_dict('records'):
-                values=[('未取得' if number(row[col]) is None else f'{number(row[col])/1e8:,.3f}') for col in ('营业收入','经营现金流','归母净利润')]
-                header+='|'+str(row['报告期'])+'|'+'|'.join(values)+'|\n'
-            story.extend(markdown_flow(header,styles))
+            records=frame.to_dict('records')
+            # Bounded table blocks keep a company heading with useful rows instead
+            # of pushing a whole multi-year table to the next page.
+            for offset in range(0,len(records),12):
+                header='|报告期|营业收入|经营现金流|归母净利润|\n|---|---|---|---|\n'
+                for row in records[offset:offset+12]:
+                    values=[('未取得' if number(row[col]) is None else f'{number(row[col])/1e8:,.3f}') for col in ('营业收入','经营现金流','归母净利润')]
+                    header+='|'+str(row['报告期'])+'|'+'|'.join(values)+'|\n'
+                story.extend(markdown_flow(header,styles))
     for model in data.get('models',[]):
         story.append(Paragraph('三表预测 · 显式假设情景',styles['h2']))
         # Preserve model inputs and all rows without publishing raw tool logs.

@@ -155,7 +155,7 @@ class ResearchAgent:
             annual=next((r for r in data['analysis']['rows'] if r['period'].endswith('12-31')),None)
             if annual:
                 data['dcf']=dcf_scenarios(annual['values'].get('revenue'),annual['period'],assumptions)
-                data['dcf_status']='modeled_scenarios'
+                data['dcf_status']='modeled_scenarios' if any('enterprise_value' in x for x in data['dcf']['scenarios'].values()) else 'scenario_inputs_unavailable'
         return data
 
     async def dispatch(self, name: str, args: dict) -> dict:

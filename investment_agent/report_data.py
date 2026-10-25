@@ -66,7 +66,7 @@ def catalog(root):
 
 def projections(result, root):
     """Only known tool contracts are interpreted; all original evidence remains intact."""
-    finances=[]; candles=[]; models=[]; warnings=[]; seen=set(); joint=[]
+    finances=[]; candles=[]; models=[]; valuations=[]; warnings=[]; seen=set(); joint=[]
     for entry in result.get('trace',[]):
         data=(entry.get('result') or {}).get('data')
         if not isinstance(data,dict): continue
@@ -89,6 +89,9 @@ def projections(result, root):
         skill=data.get('skill')
         payload=data.get('data') if skill else data
         if not isinstance(payload,dict): continue
+        if skill=='valuation':
+            valuations.append({'id':entry.get('id',''),'data':payload,'assumptions':data.get('assumptions',{}),
+                'sources':data.get('sources',[]),'label':'估值计算 · '+str(entry.get('id',''))})
         if entry.get('tool')=='financial_model' or skill=='financial-quality':
             rows=payload.get('analysis',{}).get('rows',[])
             if rows:
@@ -96,6 +99,9 @@ def projections(result, root):
                     'rows':rows,'id':entry.get('id'),'as_of':payload.get('as_of'),
                     'coverage_note':payload.get('coverage_note',''),'dcf':payload.get('dcf'),
                     'quality':payload.get('quality',{}),'documents':payload.get('document_analysis',[])})
+            if payload.get('dcf'):
+                valuations.append({'id':entry.get('id',''),'data':payload['dcf'],'assumptions':{},
+                    'sources':[],'label':str(payload.get('name') or '公司')+' · FCFF 情景'})
         if payload.get('model')=='linked-three-statement':
             models.append(payload)
         if skill=='technical-analysis' or entry.get('tool')=='load_history':
@@ -117,7 +123,16 @@ def projections(result, root):
                         candles.append({'label':str(symbol),'frame':part.sort_values('date'),'meta':meta})
                 except Exception:
                     warnings.append(f'行情快照 {sid} 无法读取或完整性校验失败；未绘制替代数据。')
-    return {'finances':finances,'candles':candles,'models':models,'warnings':warnings,'joint':joint}
+    # Revaluing the same saved statements must not create duplicate company charts.
+    unique_finances={}
+    for item in finances:
+        signature=json.dumps([item['label'],item.get('as_of'),item['rows']],sort_keys=True,ensure_ascii=False,default=str)
+        if signature in unique_finances:
+            previous=unique_finances[signature]
+            for field in ('dcf','quality','documents'):
+                if item.get(field): previous[field]=item[field]
+        else: unique_finances[signature]=item
+    return {'finances':list(unique_finances.values()),'candles':candles,'models':models,'valuations':valuations,'warnings':warnings,'joint':joint}
 
 
 def financial_frame(item):

@@ -64,9 +64,9 @@ def render_dashboard(data,key,root=None):
             if len(annual)>1:
                 fig=go.Figure()
                 for col,color in [('营业收入','#77b6df'),('经营现金流','#54d6c3'),('归母净利润','#dfbb75')]:
-                    fig.add_bar(x=annual['报告期'],y=annual[col]/1e8,name=col,marker_color=color)
+                    fig.add_bar(x=annual['报告期'].str[:4],y=annual[col]/1e8,name=col,marker_color=color)
                 fig.update_layout(template='plotly_dark',paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
-                    height=370,yaxis_title='亿元 · 完整年度',legend=dict(orientation='h',y=1.12),margin=dict(l=12,r=12,t=45,b=20))
+                    height=370,xaxis_type='category',yaxis_title='亿元 · 完整年度',legend=dict(orientation='h',y=1.12),margin=dict(l=12,r=12,t=45,b=20))
                 st.plotly_chart(fig,width='stretch',key=key+'-finance-'+str(idx),config={'displayModeBar':False})
             st.caption('只比较完整年度；季度累计值在明细中单独呈现，不机械年化。经营现金流与归母利润口径不同。')
             if item.get('coverage_note'): st.caption(str(item['coverage_note']))
@@ -93,6 +93,8 @@ def render_dashboard(data,key,root=None):
         section('三表联动预测','ASSUMPTIONS / SCENARIOS','chart')
         st.dataframe(pd.DataFrame(model.get('rows',[])).drop(columns=['assumptions'],errors='ignore'),width='stretch',hide_index=True)
         with st.expander('预测假设与校验记录'): st.json(model,expanded=False)
+    from .valuation_views import render_valuations
+    render_valuations(data.get('valuations',[]),key)
 
 
 def render_report(result,root):

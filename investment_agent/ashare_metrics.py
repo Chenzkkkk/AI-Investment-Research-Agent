@@ -10,7 +10,7 @@ from .quant_data import normalize
 
 
 FIELDS = {
-    'revenue': ['营业收入'], 'profit_parent': ['归属于母公司股东的净利润', '归母净利润'],
+    'revenue': ['营业收入'], 'total_operating_income':['营业总收入'], 'profit_parent': ['归属于母公司股东的净利润', '归母净利润'],
     'profit_ex_items': ['扣除非经常性损益后归属于母公司股东的净利润', '扣非净利润'],
     'operating_cashflow': ['经营活动产生的现金流量净额'],
     'assets': ['资产总计', '总资产'], 'liabilities': ['负债合计', '总负债'],
@@ -104,7 +104,7 @@ def financial_metrics(payload, code: str, name: str, cutoff: str) -> dict:
             'rd_to_revenue_pct': ratio('rd_expense', 'revenue', 100),
         }
         previous = periods.get(str(int(end[:4])-1) + end[4:], {}).get('values', {})
-        for field in ('revenue', 'profit_parent', 'profit_ex_items'):
+        for field in ('revenue', 'total_operating_income', 'profit_parent', 'profit_ex_items'):
             a, b = values.get(field), previous.get(field)
             record['derived'][field + '_yoy_pct'] = (a / b - 1) * 100 if a is not None and b is not None and b > 0 else None
         record['missing_fields'] = [key for key in FIELDS if values.get(key) is None]
