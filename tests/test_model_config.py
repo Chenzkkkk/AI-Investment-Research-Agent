@@ -61,10 +61,16 @@ def test_ui_defaults_to_high_and_applies_selected_effort(tmp_path,monkeypatch):
     assert selector.value=="high"
     selector.set_value("max").run(timeout=20)
     app.chat_input[0].set_value("离线配置测试").run(timeout=20)
+    from investment_agent.chat_ui import jobs
+    for future in list(jobs(str(tmp_path)).futures.values()): future.result(timeout=20)
+    app.run(timeout=20)
     assert not app.exception and observed==["max"]
     assert any("推理 max" in caption.value for caption in app.caption)
     next(widget for widget in app.selectbox if widget.label=="推理强度").set_value("low").run(timeout=20)
     app.chat_input[0].set_value("再次检查配置").run(timeout=20)
+    from investment_agent.chat_ui import jobs
+    for future in list(jobs(str(tmp_path)).futures.values()): future.result(timeout=20)
+    app.run(timeout=20)
     assert not app.exception and observed==["max","low"]
 
 

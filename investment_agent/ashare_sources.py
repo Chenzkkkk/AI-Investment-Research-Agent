@@ -73,7 +73,7 @@ def news_records(payload, cutoff: str, keywords: list[str], start: str = '') -> 
             text = str(raw.get('摘要') or '')
             record = {'title':title, 'url':url, 'published_at':timestamp,
                       'publisher':str(raw.get('来源') or '未标注'), 'summary':text[:2000],
-                      'origin':'miaoxiang_search', 'source_tier':source_tier(url)}
+                      'origin':raw.get('检索入口') or 'miaoxiang_search', 'source_tier':source_tier(url)}
             reason = None
             try:
                 stamp = pd.Timestamp(timestamp)

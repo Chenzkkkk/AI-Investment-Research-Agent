@@ -41,6 +41,9 @@ def apply_theme():
     [data-testid="stTable"] th {background:#17263a;color:#bdccdf;}
     .stButton>button,.stDownloadButton>button,[data-testid="stLinkButton"] a {border-radius:9px;border-color:#30425b;background:#142238;color:#dbe9f7;transition:border-color .2s,background .2s;}
     .stButton>button:hover,[data-testid="stLinkButton"] a:hover {border-color:#59d6d0;color:#77e8df;}
+    .st-key-research-columns button {height:auto!important;min-height:2.6rem;}
+    .st-key-research-columns button p {white-space:normal!important;overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;}
+    @media(max-width:1050px) {.st-key-research-evidence {display:none;}.st-key-research-columns [data-testid="stHorizontalBlock"] {flex-wrap:wrap!important;}.st-key-research-columns [data-testid="stColumn"] {width:100%!important;flex:1 1 100%!important;min-width:0!important;}}
     .stButton>button[kind="primary"] {background:#59d6d0;border-color:#59d6d0;color:#09252c;font-weight:650;}
     [data-baseweb="select"]>div,[data-baseweb="input"],[data-baseweb="textarea"] {background:#111f32;color:#dfeaf6;border-color:#30425b;}
     [data-testid="stExpander"] {border-color:#263347;border-radius:12px;background:#101b2b;}

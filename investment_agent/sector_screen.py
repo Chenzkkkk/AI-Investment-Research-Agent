@@ -19,6 +19,7 @@ PROFILES = {
     'trend': {'label':'趋势波段', 'horizon':'1—3个月', 'weights':{'quality':.20,'growth':.15,'value':.10,'trend':.40,'liquidity':.15}},
     'value': {'label':'价值投资', 'horizon':'1—3年', 'weights':{'quality':.40,'growth':.10,'value':.40,'trend':0.,'liquidity':.10}},
     'growth': {'label':'成长投资', 'horizon':'6—24个月', 'weights':{'quality':.25,'growth':.45,'value':.15,'trend':.05,'liquidity':.10}},
+    'event': {'label':'事件驱动', 'horizon':'事件兑现期', 'weights':{'quality':.25,'growth':.20,'value':.15,'trend':.20,'liquidity':.20}},
 }
 API = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
 REPORTS = ('RPT_LICO_FN_CPD','RPT_DMSK_FN_INCOME','RPT_DMSK_FN_BALANCE','RPT_DMSK_FN_CASHFLOW')
@@ -73,10 +74,10 @@ def candidates(payload,topic,limit=150):
         accepted.append({'code':code,'name':name,'segment':industry or '供应商主题筛选，行业待核验','screen_row':row})
     return accepted[:limit],rejected
 
-async def public_financials(service,assets,cutoff):
+async def public_financials(service,assets,cutoff,history_days=800):
     """Chunked/paginated latest statements, bounded by publication date."""
     output={}; requests=[]
-    start=(date.fromisoformat(cutoff)-timedelta(days=800)).isoformat()
+    start=(date.fromisoformat(cutoff)-timedelta(days=history_days)).isoformat()
     async with httpx.AsyncClient(timeout=30,trust_env=False) as client:
         for offset in range(0,len(assets),40):
             codes=[x['code'][:6] for x in assets[offset:offset+40]]
@@ -110,7 +111,9 @@ async def public_financials(service,assets,cutoff):
 
 def normalize_financials(records,asset,cutoff):
     grouped={}
-    for record in records:
+    # Merge only vintages available by cutoff, oldest first so newer disclosure wins.
+    for record in sorted(records,key=lambda r:r.get('published_at','')):
+        if not record.get('published_at') or record['published_at']>cutoff or record['period']>cutoff: continue
         end=record['period']; record_values={MAP[k]:v for k,v in record['row'].items() if k in MAP and number(v) is not None}
         group=grouped.setdefault(end,{'values':{},'sources':[],'published_at':record['published_at']})
         group['values'].update(record_values)
@@ -194,7 +197,7 @@ async def screen_sector(settings,service,topic,cutoff,progress=None):
     from .public_screen import public_sector_pool
     attempts=[]
     if settings.enable_miaoxiang:
-        if progress: progress('妙想 Skill 获取行业候选池与行情（最多150只）')
+        if progress: progress(f'妙想 Skill 获取行业候选池与行情（最多{limit}只）')
         result=await service.skill('mx-stocks-screener',query,limit=limit)
         attempts.append({'source':'miaoxiang_skill','ok':result.ok,'error':result.error})
     else: result=Result(source='miaoxiang',ok=False)
@@ -237,6 +240,7 @@ async def screen_sector(settings,service,topic,cutoff,progress=None):
     selected=[r['code'] for r in ranked if r['eligible']][:settings.research_top_n]
     audit={'topic':topic,'cutoff':cutoff,'profile':{'id':style,**PROFILES[style]},'candidate_count':len(assets),
         'supplier_total':result.data.get('total_rows') if isinstance(result.data,dict) else None,
+        'pool_coverage':result.data.get('coverage') if isinstance(result.data,dict) else None,
         'pool_limit':limit,'eligible_count':sum(r['eligible'] for r in ranked),'selected_codes':selected,
         'rows':ranked,'scope_rejections':rejected,'source_attempts':attempts,'financial_requests':requests,
         'financial_coverage':sum(bool(f['periods']) for f in financials.values()),

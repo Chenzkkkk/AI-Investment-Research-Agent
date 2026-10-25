@@ -34,10 +34,10 @@ def test_home_does_not_read_personal_history(tmp_path):
     with patch('investment_agent.config.Settings.load',return_value=settings):
         app=AppTest.from_file(str(ROOT/'app.py')).run(timeout=25)
         assert not app.exception
-        assert app.radio[0].options==['发现','研究','情报']
+        assert app.radio[0].options==['研究','发现','情报']
         assert all('PRIVATE_HISTORY_SENTINEL' not in m.value for m in app.markdown)
         next(w for w in app.selectbox if w.label=='专业工作区').set_value('数据与技能').run(timeout=25)
-        app.radio[0].set_value('研究对话').run(timeout=25)
+        next(b for b in app.button if b.label=='返回研究对话').click().run(timeout=25)
         assert not app.exception and len(app.chat_input)==1
         assert next(w for w in app.selectbox if w.label=='本轮投资偏好').value=='value'
 

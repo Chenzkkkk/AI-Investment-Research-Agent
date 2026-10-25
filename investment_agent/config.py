@@ -24,13 +24,13 @@ class Settings:
     enable_miaoxiang: bool = True
     enable_choice: bool = False
     enable_public: bool = True
-    max_calls: int = 6
-    max_rounds: int = 5
+    max_calls: int = 180
+    max_rounds: int = 12
     max_output_tokens: int = 16384
     max_results: int = 5
     account_context_key: str = ""
     investment_style: str = "value"
-    research_pool_limit: int = 150
+    research_pool_limit: int = 500
     research_top_n: int = 5
 
     def __post_init__(self):
@@ -52,6 +52,6 @@ class Settings:
                    enable_miaoxiang=flag("ENABLE_MIAOXIANG", True),
                    enable_choice=flag("ENABLE_CHOICE", False),
                    enable_public=flag("ENABLE_PUBLIC_DATA", True),
-                   max_calls=max(1, min(12, int(os.getenv("MAX_TOOL_CALLS_PER_REQUEST", "6")))),
-                   max_rounds=max(2, min(8, int(os.getenv("MAX_MODEL_ROUNDS", "5")))),
+                   max_calls=max(1, min(300, int(os.getenv("MAX_TOOL_CALLS_PER_REQUEST", "180")))),
+                   max_rounds=max(2, min(12, int(os.getenv("MAX_MODEL_ROUNDS", "12")))),
                    max_output_tokens=max(256, min(65536, int(os.getenv("MAX_OUTPUT_TOKENS", "16384")))))

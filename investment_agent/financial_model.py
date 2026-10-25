@@ -118,7 +118,7 @@ def dcf_scenarios(base_revenue,base_period,assumptions):
             sensitivity.append({'wacc':wacc,'terminal_growth':growth,'enterprise_value':v})
     return {'scenarios':scenarios,'sensitivity':sensitivity,'scenario_note':'情景为增长±3个百分点、WACC∓2个百分点的机械压力测试，不是概率预测。'}
 
-async def research_financials(settings,code,name,assumptions=None):
+async def research_financials(settings,code,name,assumptions=None,service=None):
     import re
     if not settings.enable_public: raise DataError('PUBLIC_DISABLED','请先启用公开数据源。')
     if not re.fullmatch(r'[\u4e00-\u9fffA-Za-z*]{2,15}',name): raise DataError('STOCK_NAME','证券简称格式不正确。')
@@ -128,14 +128,19 @@ async def research_financials(settings,code,name,assumptions=None):
     from .ashare_metrics import reconcile_report
     code=symbol(code); cutoff=now()[:10]
     asset={'code':code,'name':name}
-    records,requests=await public_financials(DataService(settings),[asset],cutoff)
+    service=service or DataService(settings)
+    records,requests=await public_financials(service,[asset],cutoff,history_days=2200)
     for record in records.get(code,[]):
         actual=record['row'].get('SECURITY_NAME_ABBR')
         if actual and actual.replace(' ','')!=name.replace(' ',''):
             raise DataError('ISSUER_MISMATCH','证券代码与公开财报简称不一致，请核对后重试。')
     financials=normalize_financials(records.get(code,[]),asset,cutoff)
-    start=(date.fromisoformat(cutoff)-timedelta(days=800)).isoformat()
-    official=await official_disclosures([asset],start,cutoff,report_only=True)
+    start=(date.fromisoformat(cutoff)-timedelta(days=2200)).isoformat()
+    from .common import Result
+    async def index_action():
+        return Result(source='cninfo_public',data=await official_disclosures([asset],start,cutoff,report_only=True))
+    index=await service.fetch('public',{'financial_official_index':code,'start':start,'end':cutoff},index_action,ttl=3600)
+    official=index.data if index.ok else {'accepted':[],'errors':[index.error]}
     # Retry explicit report documents when the structured route is empty. Never infer non-disclosure.
     fallbacks=[]
     needs_pdf=not financials['periods'] or any(p['values'].get(k) is None
@@ -162,10 +167,42 @@ async def research_financials(settings,code,name,assumptions=None):
                     old.setdefault('source_tables',[]).append(source)
                 else: financials['periods'].append({'period':period,'values':values,'published_at':doc.get('published_at'),'source_tables':[source]})
     financials['periods'].sort(key=lambda p:p['period'],reverse=True)
+    document_analysis=[]
+    # Always inspect one recent full annual report for balance-sheet fields and notes.
+    recent=next((d for d in official.get('accepted',[]) if '年度报告' in d['title'] and '半年度' not in d['title'] and '摘要' not in d['title'] and '英文' not in d['title']),None)
+    if recent:
+        async def document_action():
+            return Result(source='cninfo_document',data=await fetch_document(recent,settings.root/'data/financial-model/sources'))
+        fetched=await service.fetch('public',{'financial_pdf':recent['url']},document_action,ttl=86400)
+        if fetched.ok and fetched.data.get('status')=='body_retrieved' and fetched.data.get('local_file','').lower().endswith('.pdf'):
+            year=re.search(r'20\d{2}',recent['title'])
+            if year:
+                try:
+                    from .financial_documents import extract_pdf
+                    import asyncio
+                    parsed=await asyncio.to_thread(extract_pdf,fetched.data['local_file'],year[0]+'-12-31',name,recent['url'],recent.get('published_at'))
+                    document_analysis.append(parsed)
+                    old=next((p for p in financials['periods'] if p['period']==parsed['period']),None)
+                    if old:
+                        for key,value_ in parsed['values'].items():
+                            if old['values'].get(key) is None: old['values'][key]=value_
+                            elif abs(old['values'][key]-value_)>max(1,abs(value_)*.001):
+                                parsed['conflicts'].append(key)
+                                old.setdefault('conflicts',[]).append(key)
+                                old.setdefault('conflicting_values',{})[key]={'structured':old['values'][key],'pdf':value_}
+                                old['values'][key]=None
+                        old.setdefault('source_tables',[]).extend(parsed['source_tables'])
+                    elif parsed['values']: financials['periods'].append(parsed)
+                except Exception as exc:
+                    document_analysis.append({'status':'unparsed','url':recent['url'],'error':getattr(exc,'code',type(exc).__name__)})
+    financials['periods'].sort(key=lambda p:p['period'],reverse=True)
     analysis=statement_analysis(financials)
+    from .professional_models import normalize_periods,quality_analysis
+    normalized=normalize_periods(financials['periods'],cutoff)
     result={'symbol':code,'name':name,'as_of':cutoff,'analysis':analysis,'requests':requests,
         'official_disclosures':official,'fallbacks':fallbacks,'dcf':None,
-        'coverage_note':'已披露不等于本轮已解析；接口失败、原文获取和字段解析分别记录。'}
+        'normalized_periods':normalized,'quality':quality_analysis(normalized['rows']),'document_analysis':document_analysis,
+        'coverage_note':'目标近五年及八季；实际覆盖见periods。已披露不等于本轮已解析；接口失败、原文获取和字段解析分别记录。'}
     annual=next((r for r in analysis['rows'] if r['period'].endswith('-12-31')),None)
     if assumptions and annual:
         result['dcf']=dcf_scenarios(annual['values'].get('revenue'),annual['period'],assumptions)

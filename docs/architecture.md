@@ -1,11 +1,21 @@
-# Architecture
+# 运行架构
 
-Streamlit presents three primary destinations: discovery, research and intelligence. Advanced tools contain local history, detailed research, factors and simulation. The discovery page reads only `examples/technology-research.json`; it never chooses the newest personal report.
+首页「研究对话」调用 ResearchJobs 的单后台线程；SQLite WAL 保存会话、任务、检查点与设置。网页刷新只读取状态，不重复启动任务。关闭浏览器后本地服务继续工作；服务重启将未结束任务标为中断，用户可继续剩余步骤。取消在正在执行的请求结束后生效。
 
-Research routes a question into a sector scan or explicitly named securities. Public financial statements and quotes feed deterministic Python filters. Up to 150 candidates are considered, then up to five receive fundamental, technical, event, bullish, bearish and risk-review analyses. Native DeepSeek calls consume evidence packets; an external TradingAgents deployment is not required. Reasoning defaults to high and can be changed in the UI. Displayed sources link to original evidence.
+LangGraph 维护规划与工具循环，最多 12 轮规划、36 次工具调用。DeepSeek 的嵌套视角调用共用任务预算，默认最多 24 次模型调用、20 万输入和 4 万输出 token。接近预算停止补查并尝试生成阶段结论。模型输入采用有界数据视图，完整证据保存在本地；网页不展示内部推理链。
 
-Technology themes map to disclosed industry categories as a discovery proxy. The capped pool is selected round-robin by industry and by security code within industry, not by estimated returns. Business relevance still needs filing verification. Value screening emphasizes positive earnings, operating cash flow and peer-relative valuation. Model review may reject every screened candidate.
+公司财务报告增加一次证据约束的最终审阅，检查数值口径、因果跳跃和遗漏；审阅也计入相同预算，失败标为待复核草稿。它不是审计或自动事实认证。关闭的妙想专用工具不再提供给模型，免费资讯入口仍可使用。
 
-Frontier intelligence uses httpx, feedparser and Trafilatura with SQLite WAL. It retains article provenance, event versions, source failures, follows and bounded model budgets. Search, event detail and topic brief tools are read-only. Running `python -m investment_agent.intelligence.worker` performs a bounded due-task cycle. Scheduling is opt-in and never starts merely by opening a web page. Historical prices retain their existing DuckDB cache.
+SkillSpec/SkillResult 描述方法与结果。确定性计算在 professional_models 与 financial_model 中执行，定性调查返回材料、固定检查表和覆盖限制。CoverageChecklist 要求已核查项有本轮成功的事实证据与具体发现；提示词或空调查结果不能充当证据。该检查不构成自动事实语义认证。
 
-Choices, statements and prices are dated. Missing data stays visible. Scores are not return predictions; causal price claims require separate evidence. Trading and paid account activation are not part of the default workflow.
+复杂行业问题复用行业池、筛选与联合研究；最多 500 家是预算上限，实际池可能受主题映射、分页、权限和数据质量限制。前 20 进入比较，最多 5 家深入研究。排名为透明启发式，不能作为回测收益或成功概率。公司、情报、技术及组合问题调用不同工具，不强制全流程。
+
+金融数据链路：公开结构化三表 → 发行人和发布时间检查 → 官方披露索引 → 最近完整年报 PDF → 字段与附注线索 → 确定性计算。冲突值隔离出计算；原始候选值保留供核验。PDF 默认最多 180 页、40MB，只解析明确合并报表、期间和单位。缺失不填零，半年度不机械年化。现时接口不能保证恢复历史修订前版本。
+
+妙想为增强源，认证或额度失败会按凭证指纹跨任务熔断，网页可显式重置。没有凭证的公开版本仍可使用财报、行情和本地情报。Choice 默认关闭。
+
+TradingAgents-CN 的角色方法以独立模板包调用，包含许可证、源文件哈希和修改说明；没有导入其受限业务模块。财务模型与任务状态采用本地实现，不需要 MongoDB。
+
+前沿情报的事件与证据继续使用 SQLite，价格与数据缓存使用 DuckDB。情报查询工具只读；送入股票研究后仍需补查财报与行情。安全网页读取复用域名解析与重定向检查，网页内容只作为资料。
+
+旧报告不被自动改写。定时追踪情报与用户显式登记的预测可以用于复盘；尚未提供对任意研究结论的全自动长期评级更新。

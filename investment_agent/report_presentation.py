@@ -187,7 +187,7 @@ def screening_markdown(audit):
     profile=audit['profile']
     lines=['## 行业筛选过程',f"偏好：{profile['label']}（{profile['horizon']}）。覆盖 {audit['candidate_count']} 只，取得财报 {audit['financial_coverage']} 只，通过门槛 {audit['eligible_count']} 只，深入研究 {len(audit['selected_codes'])} 只。",
            '| 股票 | 评分 | 结果 | 原因 |','| --- | --- | --- | --- |']
-    for r in screening_rows(audit)[:15]:
+    for r in screening_rows(audit)[:20]:
         lines.append('| '+' | '.join(str(r[k]).replace('|','／') for k in ('股票','评分','结果','原因'))+' |')
     lines+=['',audit['formula'],'；'.join(audit['limitations'])]
     return '\n'.join(lines)
@@ -204,6 +204,8 @@ def chat_links(output: dict, root: Path) -> dict:
         if packet:
             links.update(evidence_links(packet))
             links[item['id']]=('查看这份研究报告',local_link(research=run_id))
+        elif isinstance(data,dict) and public_url(data.get('url')):
+            links[item['id']]=(data.get('title') or '原始资料',public_url(data['url']))
         elif re.fullmatch(r'[a-f0-9]{32}',report_id):
             links[item['id']]=('查看本次数据来源',local_link(report=report_id,source=item['id']))
     return links

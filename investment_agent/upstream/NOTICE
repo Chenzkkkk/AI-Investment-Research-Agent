@@ -1,0 +1,2 @@
+Adapted role guidance from TradingAgents-CN. Copyright 2024-2026 hsliuping & TradingAgents-CN Contributors. Apache-2.0.
+Modified: extracted literal fallback instructions; replaced tool routing and removed MongoDB/core dependencies. No core/, app/, frontend/ code included.

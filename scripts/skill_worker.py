@@ -14,7 +14,7 @@ from investment_agent.common import safe
 
 
 async def run(name: str, query: str) -> dict:
-    if name not in {"stock-fundamental-analysis", "mx-stocks-screener"}:
+    if name not in {"stock-fundamental-analysis", "mx-stocks-screener", "stock-technical-analysis", "comparable-company-analysis"}:
         return {"ok": False, "code": "NOT_ALLOWED", "message": "Skill 不在允许列表。"}
     path = ROOT / "mx-skills" / name / "scripts/get_data.py"
     spec = importlib.util.spec_from_file_location("vendor_runtime", path)
@@ -23,13 +23,24 @@ async def run(name: str, query: str) -> dict:
     output = ROOT / "data/skills" / name
     if name == "stock-fundamental-analysis":
         result = await module.analyze_stock_fundamental(query, output_dir=output, save_to_file=True)
+    elif name == 'stock-technical-analysis':
+        result = await module.analyze_stock_technical(query, output_dir=output, save_to_file=True)
+    elif name == 'comparable-company-analysis':
+        result = await module.fetch_comparable_company_data(query)
     else:
         result = await module.query_mx_stocks_screener(query, selectType="A股", output_dir=output)
+    from investment_agent.miaoxiang import check_business_error
+    try: check_business_error(result)
+    except Exception as exc:
+        return {'ok':False,'code':getattr(exc,'code','SKILL_FAILED'),'message':'妙想权限或额度不可用；未自动重试或购买。'}
     if result.get("need_auth"):
         return {"ok": False, "code": "AUTH_REQUIRED", "message": "妙想 Skill 需要重新授权，请在官方页面处理。"}
     if result.get("error"):
         return {"ok": False, "code": "SKILL_FAILED", "message": str(result["error"])}
-    if name == "stock-fundamental-analysis":
+    if name == 'comparable-company-analysis':
+        data={k:result.get(k) for k in ('header','section_finance','section_valuation','records')}
+        artifacts=[]
+    elif name in ("stock-fundamental-analysis",'stock-technical-analysis'):
         content = result.get("content", "")
         if not content.strip() or any(x in content for x in ("暂时不支持此类场景", "不支持此类问题")):
             return {"ok": False, "code": "UNSUPPORTED", "message": "Skill 返回空内容或场景不支持。"}

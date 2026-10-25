@@ -165,7 +165,7 @@ def test_fallback_records_failed_source(tmp_path):
     service.public.request = public
     result = asyncio.run(service.stock("600519"))
     assert result.ok and result.source == "public"
-    assert result.metadata["fallback_attempts"][0]["source"] == "miaoxiang"
+    assert "fallback_attempts" not in result.metadata  # Free public source succeeds before quota-backed sources.
     assert result.data_time is None
 
 

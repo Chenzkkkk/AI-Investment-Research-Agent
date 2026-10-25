@@ -48,13 +48,14 @@ def parse_quotes(text,requested):
 async def public_sector_pool(service,topic,cutoff,limit=150,progress=None):
     condition=sector_condition(topic)
     condition+=f"(REPORTDATE>='{cutoff[:4]}-01-01')(NOTICE_DATE<='{cutoff}')"
-    found={}; provenance=[]; errors=[]
+    found={}; provenance=[]; errors=[]; scanned_pages=0; available_pages=None
     async with httpx.AsyncClient(timeout=25,trust_env=False) as client:
         for page in range(1,5):
             result=await get_table(service,client,{'reportName':'RPT_LICO_FN_CPD','columns':'ALL','filter':condition,
                 'pageSize':500,'pageNumber':page,'sortColumns':'REPORTDATE,SECURITY_CODE','sortTypes':'-1,1'})
             if not result.ok: raise DataError('PUBLIC_POOL_FAILED',(result.error or {}).get('message','行业名单未取得'))
             provenance.append(result.metadata)
+            scanned_pages=page; available_pages=result.data.get('pages',1)
             for row in result.data.get('data',[]):
                 code=symbol(row.get('SECUCODE') or row['SECURITY_CODE']); name=row['SECURITY_NAME_ABBR']
                 if code in found or re.search('ST|退',name,re.I) or row.get('SECURITY_TYPE')!='A股': continue
@@ -109,5 +110,6 @@ async def public_sector_pool(service,topic,cutoff,limit=150,progress=None):
                 if quote['name'].replace(' ','')!=found[code]['名称'].replace(' ',''): continue
                 found[code]['成交额(元) '+quote['as_of']]=quote['amount']
     return Result(source='public_sector_screen',kind='screen',data={'rows':[found[c] for c in codes],
-        'total_rows':len(found),'description':'公开财报行业分类；主题映射为发现线索，具体业务关联须另核验。池内按行业轮询、行业内代码排序截取。','public_provenance':provenance,'errors':errors},
+        'total_rows':len(found),'coverage':{'scanned_pages':scanned_pages,'available_pages':available_pages,'pool_complete':scanned_pages>=available_pages and len(found)<=limit},
+        'description':'公开财报行业分类；主题映射为发现线索，具体业务关联须另核验。池内按行业轮询、行业内代码排序截取。','public_provenance':provenance,'errors':errors},
         metadata={'mode':'credential_free','classification':'东方财富公开财报行业分类','pool_limit':limit})

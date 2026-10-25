@@ -9,6 +9,23 @@ from .financial_model import research_financials,dcf_scenarios
 def render(settings):
     st.title('财务建模')
     st.caption('公开三表 → 盈利与现金质量 → 杜邦分析 → FCFF DCF情景。计算由Python完成。')
+    with st.expander('导入官方财报 PDF 补充证据'):
+        uploaded=st.file_uploader('官方财报（只在本机保存）',type=['pdf'])
+        issuer=st.text_input('PDF发行人名称')
+        period=st.text_input('报告期（YYYY-MM-DD）',value='2025-12-31')
+        if st.button('解析本地财报',disabled=uploaded is None or not issuer):
+            try:
+                from .financial_documents import extract_pdf
+                import hashlib
+                content=uploaded.getvalue()
+                if len(content)>40_000_000: raise ValueError('PDF超过40MB限制')
+                path=settings.root/'data/financial-model/imports'/(hashlib.sha256(content).hexdigest()+'.pdf')
+                path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(content)
+                result=extract_pdf(path,period,issuer)
+                path.with_suffix('.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+                st.json(result)
+                st.caption('用户导入资料尚未核对官方发布日；不自动作为历史时点已核验数据。')
+            except Exception as exc: st.error('解析未完成：'+str(exc))
     with st.form('financial-source'):
         a,b=st.columns(2)
         code=a.text_input('证券代码',value='002156.SZ')
@@ -26,7 +43,7 @@ def render(settings):
     rows=data['analysis']['rows']
     if not rows:
         st.warning('本轮未解析出结构化三表；请查看来源状态。不能据此判定公司未披露财报。')
-    tabs=st.tabs(['三表与质量','估值情景','来源与缺口'])
+    tabs=st.tabs(['三表与质量','估值情景','来源与缺口','三表预测'])
     with tabs[0]:
         annual=[r for r in rows if r['period'].endswith('-12-31')]
         interim=[r for r in rows if not r['period'].endswith('-12-31')]
@@ -92,3 +109,59 @@ def render(settings):
             st.markdown(f"[{doc['title']}]({doc['url']}) · {doc.get('published_at','时间未确认')}")
         with st.expander('接口与解析状态'): st.json({'requests':data['requests'],'fallbacks':data['fallbacks'],'official_status':data['official_disclosures'].get('error')})
         st.markdown('[FCFF方法：NYU Damodaran](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/littlebook/cashflows.htm) · [杜邦方法：CFI](https://corporatefinanceinstitute.com/resources/accounting/dupont-analysis/)')
+    with tabs[3]:
+        linked_workbench(rows)
+
+
+def linked_workbench(rows):
+    from .professional_models import three_statement,equity_bridge
+    st.caption('非金融企业年度情景。金额全部为元，比率为小数。空值必须补齐；基期不平衡会阻止计算。编辑假设后重新计算不调用语言模型。')
+    annual=next((r for r in rows if r['period'].endswith('12-31')),None)
+    if not annual: st.info('需要完整年度基期。'); return
+    signature=json.dumps(annual['values'],sort_keys=True,ensure_ascii=False)
+    if st.session_state.get('linked_company')!=signature:
+        st.session_state.pop('linked_result',None)
+        st.session_state['linked_company']=signature
+    mapping={'revenue':'revenue','cash':'cash','receivables':'receivables','inventory':'inventory',
+             'payables':'payables','ppe':'ppe','other_assets':None,'debt':None,'other_liabilities':None,'equity':'equity_total'}
+    with st.form('linked-forecast'):
+        st.write('**基期资产负债与收入 · '+annual['period']+'**')
+        base_frame=pd.DataFrame([{'字段':k,'金额（元）':annual['values'].get(v) if v else None} for k,v in mapping.items()])
+        base_edit=st.data_editor(base_frame,disabled=['字段'],hide_index=True,width='stretch',key='linked-base')
+        st.caption('其他资产/负债与有息债务需按附注分类；现金不能混入受限资金。不能为配平随意填写。')
+        st.write('**逐年假设 · 默认数值仅演示，须修改并说明依据**')
+        demo=dict(growth=.10,gross_margin=.25,opex_ratio=.10,tax_rate=.25,dso=60.,dio=60.,dpo=45.,
+                  capex_ratio=.08,depreciation_ratio=.10,interest_rate=.05,payout=.20,
+                  new_debt=0.,debt_repayment=0.,equity_issue=0.,basis='')
+        edited=st.data_editor(pd.DataFrame([demo.copy() for _ in range(3)]),hide_index=True,num_rows='dynamic',width='stretch',key='linked-drivers')
+        st.caption('growth=增长；gross_margin=毛利率；opex_ratio=不含折旧的费用率；dso/dio/dpo=应收/存货/应付天数；basis=每年假设依据。')
+        confirmed=st.checkbox('我已核对基期、单位与每年假设；这些是研究情景')
+        calculate=st.form_submit_button('重算三表与融资缺口')
+    if calculate:
+        if not confirmed: st.warning('请先核对输入。')
+        else:
+            try:
+                base={r['字段']:r['金额（元）'] for _,r in base_edit.iterrows()}
+                st.session_state.linked_result=three_statement(base,edited.to_dict('records'))
+            except Exception as exc:
+                st.session_state.pop('linked_result',None); st.error(str(exc) if hasattr(exc,'code') else '请检查数字和假设格式。')
+    if st.session_state.get('linked_result'):
+        result=st.session_state.linked_result
+        st.dataframe(pd.DataFrame(result['rows']).drop(columns=['assumptions']),hide_index=True,width='stretch')
+        st.caption('balance_residual为平衡差额；funding_gap为未安排融资的缺口。'+' '.join(result['limits']))
+        st.download_button('下载三表情景与假设',json.dumps(result,ensure_ascii=False,indent=2),file_name='linked-statements.json')
+    with st.expander('企业价值 → 股权价值与每股价值'):
+        st.caption('各项均需自行核验，金额为元、股数为股；不把合并账面现金直接认定为可分配现金。')
+        with st.form('equity-bridge'):
+            entries={k:st.number_input(label,value=None,key='bridge-'+k) for k,label in {
+                'enterprise_value':'经营企业价值','debt':'同口径有息债务（含适用租赁负债）','cash':'可分配非经营现金',
+                'minority_interest':'少数股东权益价值','nonoperating_assets':'其他非经营资产价值','shares':'估值日稀释股数'}.items()}
+            basis=st.text_input('桥接口径与来源依据')
+            convert=st.form_submit_button('计算股权桥接')
+        if convert:
+            if not basis.strip(): st.warning('请填写来源和口径依据。')
+            else:
+                try:
+                    result=equity_bridge(entries); result['basis']=basis
+                    st.metric('情景每股价值（元）',f"{result['value_per_share']:.2f}"); st.json(result,expanded=False)
+                except Exception as exc: st.error(str(exc) if hasattr(exc,'code') else '桥接输入无效。')

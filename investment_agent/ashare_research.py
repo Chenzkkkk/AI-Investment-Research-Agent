@@ -39,7 +39,8 @@ def save_json(path: Path, value: dict) -> None:
 
 def upstream_manifest(root: Path) -> dict:
     path=Path(__file__)
-    return {'integration':'native evidence-grounded six-stage research',
+    from .upstream_adapter import manifest
+    return {'integration':'audited TradingAgents-CN role guidance + native evidence pipeline', 'roles':manifest(),
             'files':{'ashare_research.py':hashlib.sha256(path.read_bytes()).hexdigest()}}
 
 
@@ -301,7 +302,7 @@ def model_packet(packet: dict) -> str:
     if packet.get('screening'):
         audit=packet['screening']
         compact['screening']={k:audit[k] for k in ('profile','candidate_count','eligible_count','selected_codes','formula','limitations')}
-        compact['screening']['ranking']=audit['rows'][:15]
+        compact['screening']['ranking']=audit['rows'][:20]
     compact = json.loads(json.dumps(compact,ensure_ascii=False))
     from .financial_model import statement_analysis
     compact['financial_models']={e['subject']:statement_analysis(e['data'])
@@ -340,10 +341,28 @@ async def analyze(settings: Settings, packet: dict, progress: Callable | None = 
             reports,calls=previous['reports'],previous['calls']
     status, error = 'completed', None
     try:
-        for key,label,prompt in STAGES:
+        plan_path=folder/'role-plan.json'
+        if plan_path.exists():
+            planned=json.loads(plan_path.read_text(encoding='utf-8')).get('stages',[])
+        else:
+            planned=[]
+            if client is None:
+                selected=await model.complete('你是研究调度器，只输出JSON {"stages":[...],"reason":"..."}。可选fundamentals,technicals,events,bull,bear,review。根据用户问题与已有数据选择必要角色；review必须最后；最多4个角色。不要生成分析正文。',
+                    json.dumps({'question':packet.get('question'),'topic':packet['topic'],'coverage':packet['statuses'],'profile':packet.get('user_context',{})},ensure_ascii=False))
+                calls.append({'stage':'planning',**{k:v for k,v in selected.items() if k!='text'}})
+                try:
+                    choice=json.loads(selected['text'].strip().removeprefix('```json').removesuffix('```'))
+                    planned=[k for k in choice.get('stages',[]) if k in {x[0] for x in STAGES} and k!='review'][:3]
+                except (ValueError,TypeError): planned=[]
+                planned=list(dict.fromkeys(planned))+['review']
+            if not planned: planned=[x[0] for x in STAGES]
+            save_json(plan_path,{'stages':planned,'mode':'dynamic' if client is None else 'test_supplied_client'})
+        from .upstream_adapter import guidance
+        for key in planned:
+            _,label,prompt=next(x for x in STAGES if x[0]==key)
             if key in reports: continue
             if progress: progress('DeepSeek研究：'+label)
-            system = COMMON_PROMPT+'\n本阶段：'+prompt
+            system = COMMON_PROMPT+'\n本阶段：'+prompt+'\n角色方法：'+guidance(key)
             if key in ('bull','bear'): system += '\n情景研究规范：\n'+scenario_prompt(settings.root,key)
             preceding = reports if key in ('bull','bear','review') else {}
             result = await model.complete(system,context+'\n前序模型观点（必须回查证据）：\n'+json.dumps(preceding,ensure_ascii=False))

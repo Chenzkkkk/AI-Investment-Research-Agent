@@ -78,7 +78,13 @@ class MiaoxiangProvider:
 
     async def skill(self, name: str, query: str, stock_name: str = "") -> Result:
         self._require(self.settings.skills_key)
-        if name not in {"stock-fundamental-analysis", "mx-stocks-screener"}:
+        routes={'stock-earnings-review':'mx_ashare_finance_data','industry-deep-research':'mx_index_block_finance_data'}
+        if name in routes:
+            result=await self.mcp(routes[name],query+'；返回原始数据、实际报告期和来源链接。',kind='research')
+            result.metadata.update(requested_skill=name,execution_mode='reviewed_mcp_equivalent',
+                limitation='使用已授权MCP等价数据路线，不冒充原生付费报告生成接口。')
+            return result
+        if name not in {"stock-fundamental-analysis", "mx-stocks-screener", "stock-technical-analysis", "comparable-company-analysis"}:
             raise DataError("SKILL_NOT_EXECUTABLE", "该 Skill 尚未审查运行入口，可读取说明或改用 MCP。")
         execution_query = query
         if name == "stock-fundamental-analysis":

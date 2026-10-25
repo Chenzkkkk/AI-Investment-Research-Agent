@@ -52,14 +52,28 @@ class DataService:
         self.blocked: set[str] = set()
         self.results: list[Result] = []
         self.failed_requests: dict[str, Result] = {}
+        from .research_runtime import ResearchStore
+        self.runtime_store=ResearchStore(settings.root)
+
+    def circuit_key(self,source):
+        credential=self.settings.mcp_key+'|'+self.settings.skills_key if source=='miaoxiang' else source
+        return source+':'+hashlib.sha256(credential.encode()).hexdigest()
 
     def enabled(self, source: str) -> bool:
         return {"miaoxiang": self.settings.enable_miaoxiang, "choice": self.settings.enable_choice,
                 "public": self.settings.enable_public}[source]
 
     async def fetch(self, source: str, args: dict, action: Callable[[], Awaitable[Result]], ttl=60) -> Result:
+        from .research_runtime import ACTIVE_BUDGET
+        budget=ACTIVE_BUDGET.get()
+        if budget and budget.cancelled and budget.cancelled():
+            raise DataError('TASK_CANCELLED','已停止后续数据请求。')
         if not self.enabled(source):
             return failed(source, DataError("DISABLED", source + " 已关闭；未请求该来源。"))
+        if source=='miaoxiang':
+            with self.runtime_store.connect() as db:
+                circuit=db.execute('SELECT reason FROM circuits WHERE key=?',(self.circuit_key(source),)).fetchone()
+            if circuit: return failed(source,DataError('SOURCE_CIRCUIT_OPEN','妙想此前额度或权限失败，已暂停；请在网页来源设置中确认恢复后重试。'))
         if source in self.blocked:
             return failed(source, DataError("SOURCE_BLOCKED", "该来源本轮已出现权限错误，停止重复调用。"))
         credential = self.settings.mcp_key if source == "miaoxiang" else ""
@@ -100,6 +114,9 @@ class DataService:
                 self.blocked.add(source)
             elif rejected(exc):
                 self.blocked.add(source)
+            if source=='miaoxiang' and source in self.blocked:
+                with self.runtime_store.connect() as db:
+                    db.execute('INSERT OR REPLACE INTO circuits VALUES(?,?,?)',(self.circuit_key(source),getattr(exc,'code',type(exc).__name__),time.time()))
             return result
 
     async def stock(self, code: str, kind="quote", source="auto", query="", start="", end="") -> Result:
@@ -108,7 +125,7 @@ class DataService:
             raise DataError("INVALID_KIND", "仅支持行情、基本面或历史数据。")
         if source not in {"auto", "miaoxiang", "choice", "public"}:
             raise DataError("INVALID_SOURCE", "未知数据来源。")
-        sources = [source] if source != "auto" else [s for s in ("choice", "miaoxiang", "public") if self.enabled(s)]
+        sources = [source] if source != "auto" else [s for s in ("public", "miaoxiang", "choice") if self.enabled(s)]
         if not sources:
             return failed("none", DataError("NO_SOURCE", "所有数据源均关闭。"))
         attempts = []
@@ -138,9 +155,30 @@ class DataService:
             "credential": hashlib.sha256(self.settings.skills_key.encode()).hexdigest()},
             lambda: self.mx.skill(name, query, stock_name), ttl=900)
 
-    async def news(self, query: str, notices=False) -> Result:
+    async def news(self, query: str, notices=False, code=None, name=None) -> Result:
         tool = "mx_finance_search_notice" if notices else "mx_finance_search_news"
-        return await self.fetch("miaoxiang", {"tool": tool, "query": query}, lambda: self.mx.mcp(tool, query), 600)
+        attempts=[]
+        if self.settings.enable_miaoxiang:
+            remote=await self.fetch("miaoxiang", {"tool": tool, "query": query}, lambda: self.mx.mcp(tool, query), 600)
+            if remote.ok and remote.data: return remote
+            attempts.append({'source':'miaoxiang','error':remote.error})
+        from .intelligence.service import IntelligenceService
+        from .china_research import discover_official
+        local=IntelligenceService(self.settings.root).search_intelligence(name or query)
+        official=await discover_official(self,query,'governance' if notices else 'business-industry',code=code,name=name)
+        records=list(official['evidence'])
+        for event in local['data']:
+            records.extend({'title':a['title'],'url':a['url'],'published_at':a['published'],
+                            'coverage':a['coverage'],'publisher':'本地情报原始来源'} for a in event['sources'])
+        unique={r['url']:r for r in records if r.get('url')}
+        if not unique:
+            return Result(source='public_news',ok=False,error={'code':'PUBLIC_NEWS_EMPTY','message':'本轮公开入口与本地情报未取得匹配材料；不表示公司没有公告或事件。'},
+                          metadata={'attempts':attempts,'requests':official['requests'],'local_coverage':local['coverage']})
+        table={'columns':['标题','跳转链接','发布时间','摘要','来源','检索入口'],
+               'items':[[r.get('title'),r['url'],r.get('published_at'),r.get('body') or r.get('summary') or r.get('coverage','仅索引'),
+                         r.get('publisher','官方披露'),'public_discovery'] for r in unique.values()]}
+        return Result(source='public_news',data={'tables':[table],'coverage':'有限官方入口与本地情报，非全网；原文缺失或日期未知必须继续核验。'},
+                      metadata={'attempts':attempts,'requests':official['requests']})
 
     async def compare(self, code: str, sources: list[str]) -> dict:
         if len(sources) < 2 or len(sources) > 3 or len(set(sources)) != len(sources):
