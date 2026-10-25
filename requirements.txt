@@ -1,0 +1,16 @@
+httpx==0.28.1
+mcp>=1.12,<2
+pandas>=2.2,<3
+numpy>=2,<3
+duckdb>=1.2,<2
+streamlit>=1.45,<2
+python-dotenv>=1,<2
+jsonschema>=4,<5
+akshare>=1.16,<2
+baostock>=0.8,<1
+pytest>=8,<10
+pypdf>=6,<7
+plotly==6.3.1
+feedparser>=6.0,<7
+trafilatura>=2.0,<3
+beautifulsoup4>=4.12,<5
