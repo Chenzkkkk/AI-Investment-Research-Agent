@@ -96,7 +96,7 @@ def candle_figure(frame,window=90,averages=True):
         hovertemplate='%{x}<br>成交量 %{y:,.2f} 万股<extra></extra>'),row=2,col=1)
     style(fig,450)
     fig.update_layout(xaxis_rangeslider_visible=False,showlegend=True,hovermode='x unified',
-        legend=dict(y=1.13),margin=dict(l=12,r=12,t=42,b=20))
+        legend=dict(y=1.16,font=dict(size=10),entrywidth=60),margin=dict(l=12,r=12,t=68,b=20))
     # Show only observations as trading sessions, without interpolated holiday bars.
     fig.update_xaxes(type='category',categoryorder='array',categoryarray=data.date.tolist(),nticks=7,
         showspikes=True,spikecolor='#59d6d0',spikemode='across')

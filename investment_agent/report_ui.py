@@ -105,9 +105,9 @@ def evidence_detail(item,packet):
 def render_source_route(root: Path) -> bool:
     params=st.query_params
     if not any(k in params for k in ('research','report','evidence','source')): return False
-    if st.button('返回研究对话'):
+    if st.button('← 返回我的报告'):
         st.query_params.clear()
-        st.session_state['workspace']='研究对话'
+        st.session_state['workspace']='报告库'
         st.rerun()
     if 'research' in params:
         packet=load_packet(root,params['research'])
@@ -123,17 +123,25 @@ def render_source_route(root: Path) -> bool:
             if path.is_file():
                 result=json.loads(path.read_text(encoding='utf-8'))
                 report=render_research(result,packet,root)
-                st.download_button('下载完整研究报告',report,file_name='联合研究.md')
+                from .report_workspace import export_controls
+                from .report_data import projections
+                exported={'question':packet['topic'],'created_at':result.get('created_at',packet['cutoff']),
+                    'report':report,'trace':[{'id':'S1','tool':'joint_stock_research','result':{'data':{'run_id':packet['run_id']}}}]}
+                export_controls(exported,root,key='joint-export',visual_data=projections(exported,root))
             else: st.info('该研究尚未生成报告。')
         return True
     report_id=params.get('report','')
     source=params.get('source','')
     base=(root/'data/reports').resolve()
     path=(base/(report_id+'.json')).resolve()
-    if not re.fullmatch(r'[a-f0-9]{32}',report_id) or not re.fullmatch(r'S\d+',source) or not path.is_relative_to(base) or not path.is_file():
+    if not re.fullmatch(r'[a-f0-9]{32}',report_id) or (source and not re.fullmatch(r'S\d+',source)) or not path.is_relative_to(base) or not path.is_file():
         st.error('数据来源链接无效。')
         return True
     saved=json.loads(path.read_text(encoding='utf-8'))
+    if not source:
+        from .report_workspace import render_report
+        render_report(saved,root)
+        return True
     item=next((r for r in saved.get('trace',[]) if r['id']==source),None)
     if item:
         st.markdown('## 本次研究的数据来源')

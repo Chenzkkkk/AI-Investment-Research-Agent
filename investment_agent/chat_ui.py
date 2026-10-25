@@ -16,55 +16,15 @@ STATUS={'checked':'已核查','conflict':'存在矛盾','missing':'缺少数据'
 
 
 def result_cards(result,settings):
-    if result.get('review_status')=='model_evidence_review_completed':
-        st.caption('已进行模型证据审阅；这不是审计或自动事实认证，关键判断仍可展开原文核查。')
-    st.markdown(result.get('report','尚未生成正文。'))
-    for item in result.get('trace',[]):
-        if item['tool'] not in ('financial_model','execute_professional_skill'): continue
-        data=item['result'].get('data',{})
-        if data.get('skill')=='technical-analysis':
-            snapshot=data['data'].get('snapshot',{}).get('data',{})
-            if snapshot.get('id'):
-                with st.expander('K线与量价 · 来源快照'):
-                    from .quant_data import DatasetStore
-                    frame,meta=DatasetStore(settings.root).load(snapshot['id'])
-                    frame=frame.tail(180)
-                    fig=go.Figure(go.Candlestick(x=frame['date'],open=frame['open'],high=frame['high'],low=frame['low'],close=frame['close']))
-                    fig.update_layout(template='plotly_dark',height=350,xaxis_rangeslider_visible=False,margin=dict(l=5,r=5,t=15,b=15))
-                    st.plotly_chart(fig,width='stretch',key='kline-'+result.get('task_id',result['created_at'])+'-'+item['id'])
-                    st.caption(str(meta.get('source'))+' · '+str(meta.get('adjustment'))+' · 截止 '+meta['end'])
-        if data.get('skill')=='financial-quality': data=data['data']
-        rows=data.get('analysis',{}).get('rows',[])
-        if rows:
-            with st.expander('财务趋势 · 已披露数据'):
-                frame=pd.DataFrame([{'报告期':r['period'],'营业收入':r['values'].get('revenue'),
-                    '经营现金流':r['values'].get('operating_cashflow'),'归母净利润':r['values'].get('profit_parent')} for r in rows]).sort_values('报告期')
-                # Annual and cumulative interim periods must never share a misleading trend line.
-                annual=frame[frame['报告期'].str.endswith('12-31')]
-                if len(annual)>1:
-                    fig=go.Figure()
-                    for key in ('营业收入','经营现金流','归母净利润'):
-                        fig.add_trace(go.Bar(x=annual['报告期'],y=annual[key]/1e8,name=key))
-                    fig.update_layout(template='plotly_dark',height=320,yaxis_title='亿元 · 完整年度',margin=dict(l=10,r=10,t=15,b=20),legend=dict(orientation='h'))
-                    st.plotly_chart(fig,width='stretch',key='finance-chart-'+result.get('task_id',result['created_at'])+'-'+item['id'])
-                st.dataframe(frame,width='stretch',hide_index=True)
-        model=data.get('data',{}) if data.get('skill') else data
-        if isinstance(model,dict) and model.get('model')=='linked-three-statement':
-            with st.expander('三表预测 · 显式假设情景'):
-                st.dataframe(pd.DataFrame(model['rows']).drop(columns=['assumptions'],errors='ignore'),hide_index=True,width='stretch')
-    coverage=result.get('research_coverage',{})
-    if coverage.get('items'):
-        with st.expander('研究覆盖与重要未知'):
-            for item in coverage['items']:
-                st.write(f"**{item['label']}** · {STATUS.get(item['status'],item['status'])}")
-                if item.get('claim'): st.caption(item['claim'])
-                if item.get('watch_next'): st.caption('继续观察：'+item['watch_next'])
-            st.caption(coverage.get('note',''))
-    with st.expander('计算、来源与调用记录'):
-        for entry in result.get('trace',[]):
-            st.write(entry['tool']); st.json(entry['result'],expanded=False)
-    st.caption(f"{result.get('created_at','')} · {result.get('model','')} · 推理 {result.get('reasoning_effort','high')} · 数据请求 {result.get('data_calls',0)}")
-    st.download_button('下载研究报告',result.get('report',''),file_name='研究报告.md',key='download-'+result.get('task_id',result.get('report_file',result['created_at'])))
+    from .report_data import summary, report_id
+    from .report_workspace import open_report
+    st.markdown('### 研究报告已保存')
+    st.markdown(summary(result.get('report','尚未生成正文。')))
+    st.caption('以上为正文节选。完整报告包含判断条件、数据看板、原文依据与研究覆盖。')
+    identifier=result.get('task_id') or report_id(result) or result.get('created_at','result')
+    if st.button('打开完整分析报告 →',key='open-'+identifier,type='primary',width='stretch'):
+        open_report(result); st.rerun()
+    st.caption(str(result.get('created_at',''))+' · 推理 '+result.get('reasoning_effort','high')+' · 本机自动保存 · 可在「我的报告」回看及导出 PDF')
 
 
 def render(settings):

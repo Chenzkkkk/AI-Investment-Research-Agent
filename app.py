@@ -20,6 +20,14 @@ from investment_agent.report_ui import render_source_route, render_research
 from investment_agent.report_presentation import load_packet, linked_text, chat_links
 if render_source_route(settings.root):
     st.stop()
+if st.session_state.get('open_report'):
+    if st.button('← 返回研究对话'):
+        st.session_state.pop('open_report',None)
+        st.session_state['workspace']='研究对话'
+        st.rerun()
+    from investment_agent.report_workspace import render_report
+    render_report(st.session_state['open_report'],settings.root)
+    st.stop()
 if st.session_state.pop('intel_go_chat', False):
     st.session_state['workspace'] = '研究对话'
     st.session_state['advanced_workspace'] = '不打开'
@@ -30,9 +38,9 @@ def return_chat():
     st.session_state['workspace']='研究对话'
 with st.sidebar:
     st.markdown('<div class="zh-brand">'+icon('radar')+'知衡研究台</div>',unsafe_allow_html=True)
-    st.caption("AI · 机器人 · 前沿科技")
-    page = st.radio("工作区", ["研究对话", "研究看板", "前沿情报"],key='workspace',on_change=clear_advanced,
-        format_func=lambda x:{'研究看板':'发现','研究对话':'研究','前沿情报':'情报'}[x])
+    st.caption("行业 · 公司 · 市场 · 投资研究")
+    page = st.radio("工作区", ["产品首页", "研究对话", "报告库", "研究看板", "前沿情报"],key='workspace',on_change=clear_advanced,
+        format_func=lambda x:{'产品首页':'知衡 · 首页','报告库':'我的报告','研究看板':'研究示例','研究对话':'与 Agent 研究','前沿情报':'前沿情报'}[x])
     with st.expander('更多工具'):
         extra=st.selectbox('专业工作区',['不打开','财务建模','研究记录','A股联合研究','官方账户','数据与技能','因子与回测','模拟组合','日报与复盘'],key='advanced_workspace')
         if extra!='不打开': page=extra
@@ -67,6 +75,16 @@ with st.sidebar:
                 db.execute("DELETE FROM circuits")
             st.success('已清除暂停状态，下一次研究将按来源开关使用。')
     st.caption('本地工作区 · 数据按来源日期展示')
+
+if page == '产品首页':
+    from investment_agent.landing_ui import render
+    render(settings)
+    st.stop()
+
+if page == '报告库':
+    from investment_agent.report_workspace import render_library
+    render_library(settings)
+    st.stop()
 
 if page == "前沿情报":
     from investment_agent.intelligence.ui import render as render_intelligence

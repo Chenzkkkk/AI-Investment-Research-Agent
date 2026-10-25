@@ -12,7 +12,7 @@ from .dashboard_charts import (research_rows,load_bars,candle_figure,normalized_
 from .report_presentation import RUN_PATTERN,load_packet,review_text
 from .visual_theme import hero,section,kpis
 
-PLOT_CONFIG={'displaylogo':False,'scrollZoom':False,'modeBarButtonsToRemove':['lasso2d','select2d'],
+PLOT_CONFIG={'displaylogo':False,'displayModeBar':False,'scrollZoom':False,'modeBarButtonsToRemove':['lasso2d','select2d'],
              'toImageButtonOptions':{'format':'png','scale':2}}
 
 
