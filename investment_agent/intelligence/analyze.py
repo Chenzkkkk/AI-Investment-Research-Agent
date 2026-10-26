@@ -49,6 +49,8 @@ def candidates(store,event):
 
 def validate_analysis(value,articles,candidate_ids):
     jsonschema.validate(value,SCHEMA)
+    from .research_agent import chinese
+    if not chinese(value["title_zh"]) or not chinese(value["summary_zh"]): raise ValueError("标题和摘要缺少中文版本；保留原始材料等待重新整理")
     by_id={a['id']:a for a in articles}
     for group in ('facts','impacts','conflicts'):
         for claim in value[group]:

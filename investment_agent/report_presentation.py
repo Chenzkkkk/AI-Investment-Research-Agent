@@ -84,6 +84,14 @@ def normalize_markdown(text: str) -> str:
         if not fenced and not line.strip() and output and output[-1].strip().startswith('|'):
             following=next((x.strip() for x in lines[index+1:] if x.strip()),'')
             if following.startswith('|'): continue
+        # Some model outputs omit the mandatory header separator. Repair only
+        # contiguous, equal-width pipe tables outside code fences.
+        if not fenced and line.strip().startswith('|') and output and output[-1].strip().startswith('|'):
+            prior=output[-1].strip()
+            before=output[-2].strip() if len(output)>1 else ''
+            separator=lambda s:bool(re.fullmatch(r'\|(?:\s*:?-+:?\s*\|)+',s))
+            if not before.startswith('|') and not separator(line.strip()) and not separator(prior) and line.count('|')==prior.count('|'):
+                output.append('| '+' | '.join(['---']*(prior.count('|')-1))+' |')
         output.append(line)
     return '\n'.join(output).strip()
 
@@ -194,6 +202,7 @@ def screening_markdown(audit):
 
 
 def chat_links(output: dict, root: Path) -> dict:
+    from .reader_evidence import originals, readable_url
     links={}
     report_id=Path(output.get('report_file','')).stem
     for item in output.get('trace',[]):
@@ -204,8 +213,11 @@ def chat_links(output: dict, root: Path) -> dict:
         if packet:
             links.update(evidence_links(packet))
             links[item['id']]=('查看这份研究报告',local_link(research=run_id))
-        elif isinstance(data,dict) and public_url(data.get('url')):
-            links[item['id']]=(data.get('title') or '原始资料',public_url(data['url']))
+        elif isinstance(data,dict) and readable_url(data.get('url')):
+            links[item['id']]=(data.get('title') or '原始资料',readable_url(data['url']))
+        elif len(originals(result))==1:
+            source=originals(result)[0]
+            links[item['id']]=(source['title'],source['url'])
         elif re.fullmatch(r'[a-f0-9]{32}',report_id):
-            links[item['id']]=('查看本次数据来源',local_link(report=report_id,source=item['id']))
+            links[item['id']]=('查看依据与计算说明',local_link(report=report_id,source=item['id']))
     return links

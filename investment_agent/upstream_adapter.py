@@ -26,7 +26,9 @@ async def perspective(agent,role,evidence_ids,question):
         raise DataError('ROLE_EVIDENCE','研究角色需要本轮已有证据编号。')
     from .research_runtime import model_view
     prompt=guidance(role)+'\n资料已由主Agent获取，无需也不可再次调用工具。仅输出最重要的5项发现，总长度控制在800个汉字内。事实引用提供的[S编号]或原文网址。'
+    from .agent import DeepSeekClient
+    kwargs={'output_cap':8192} if isinstance(agent.client,DeepSeekClient) else {}
     message,usage=await agent.client.complete([{'role':'system','content':prompt},
-        {'role':'user','content':json.dumps({'question':question,'evidence':model_view(entries)},ensure_ascii=False,default=str)}],allow_tools=False)
+        {'role':'user','content':json.dumps({'question':question,'evidence':model_view(entries)},ensure_ascii=False,default=str)}],allow_tools=False,**kwargs)
     return {'ok':True,'source':'tradingagents_cn_adapted_role','data':{'role':role,'analysis':message.get('content',''),
         'evidence_ids':evidence_ids,'upstream':manifest()[role],'classification':'model_interpretation'},'usage':usage}

@@ -141,6 +141,8 @@ def chart(title, frame, kind, font):
 
 
 def build_pdf(result, root, *, visual_data=None):
+    from .reader_evidence import reader_report
+    result={**result,"report":reader_report(result,root)}
     # Font registration and ReportLab global registries are protected across users/threads.
     with _LOCK:
         return _build(result, root, visual_data)
@@ -172,7 +174,7 @@ def _build(result, root, visual_data):
             story.append(Paragraph(escape(f"来源 {meta.get('source','见证据')} · 复权 {meta.get('adjustment','未标注')} · 截止 {meta.get('end','未标注')} · 红涨绿跌，不含策略收益"),styles['cell']))
     for warning in data.get('warnings',[]): story.append(Paragraph(escape(warning),styles['body']))
     story.extend([PageBreak(),Paragraph('研究分析与判断',styles['h1'])])
-    story.extend(markdown_flow(result.get('report','暂无正文'),styles))
+    story.extend(markdown_flow(result.get('report','暂无正文').split('## 原文与数据依据')[0],styles))
     if data.get('valuations'):
         from .valuation_views import valuation_markdown
         story.extend([PageBreak(),Paragraph('估值模型、情景与假设',styles['h1'])])
@@ -200,7 +202,7 @@ def _build(result, root, visual_data):
     coverage=result.get('research_coverage') or {}
     if coverage.get('items'):
         story.extend([PageBreak(),Paragraph('研究覆盖与后续观察',styles['h1'])])
-        labels={'checked':'已核查','conflict':'存在矛盾','missing':'缺少数据','not_applicable':'不适用','not_run':'尚未执行'}
+        labels={'checked':'已核查','calculated':'已计算，待复核假设','retrieved':'已取得材料，待核查','conflict':'存在矛盾','missing':'已执行但数据不足','not_applicable':'不适用','not_run':'尚未执行'}
         for item in coverage['items']:
             story.append(Paragraph(escape(str(item['label'])+' · '+labels.get(item['status'],item['status'])),styles['h2']))
             for key in ('claim','watch_next'):

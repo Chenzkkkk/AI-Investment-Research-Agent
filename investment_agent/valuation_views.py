@@ -33,6 +33,9 @@ def sensitivity_frame(item):
 def valuation_markdown(item):
     """Same numeric rows and explicit assumptions for web and PDF."""
     data=item['data'];blocks=['### '+item['label']]
+    if data.get('capital_bridge'):
+        from .capital_bridge import bridge_markdown
+        return bridge_markdown(data['capital_bridge'],data.get('equity_valuation'))
     frame=scenario_frame(item)
     if not frame.empty:
         columns=['情景','经营企业价值（亿元）','收入增速（%）','WACC（%）','永续增长（%）']

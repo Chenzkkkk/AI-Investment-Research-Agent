@@ -98,24 +98,54 @@ def render_dashboard(data,key,root=None):
 
 
 def render_report(result,root):
+    from .reader_evidence import reader_report
+    result={**result,'report':reader_report(result,root)}
     from .chat_ui import STATUS
     hero(title(result),'结论、数据与依据，在同一份研究中核对。','RESEARCH REPORT / SAVED SNAPSHOT')
     st.caption('生成于 '+str(result.get('created_at','未记录'))+' · '+str(result.get('model',''))+' · 已保存在本机')
     with st.expander('原始研究问题'): st.write(result.get('question','未记录'))
     st.markdown('**研究摘要**'); st.write(summary(result.get('report',''),350))
     st.caption('摘要为正文节选；适用条件与风险以完整报告为准。')
-    coverage=result.get('research_coverage') or {}; items=coverage.get('items',[])
+    coverage=result.get('research_coverage') or {}
+    if coverage.get('items') and all(x.get('factor') for x in coverage['items']):
+        from .professional_skills import CoverageChecklist
+        c=CoverageChecklist()
+        c.items.update({x['factor']:{**c.items.get(x['factor'],{}),**{k:v for k,v in x.items() if k!='factor'}} for x in coverage['items']})
+        coverage=c.observe(result.get('trace',[]))
+    items=coverage.get('items',[])
     sources=source_links(result); data=projections(result,root)
-    kpis([('研究证据',len(result.get('trace',[])),'工具返回记录，非独立来源数','layers'),
-        ('原文入口',len(sources),'去重后的可访问网址','radar'),('覆盖核查',f"{sum(x.get('status')=='checked' for x in items)} / {len(items)}",'完成程度，不代表结论可信概率','check'),
+    if result.get('research_type')=='intelligence':
+        from .report_data import intelligence_articles
+        from urllib.parse import urlsplit
+        articles=intelligence_articles(result)
+        kpis([('取得材料',len(articles),'本轮选取的材料，非全网数量','layers'),
+            ('来源站点',len({urlsplit(a['url']).hostname for a in articles}),'站点不同不代表独立验证','radar'),
+            ('研究阶段',len(result.get('research_process',[])),'规划、取证与复核记录','check'),
+            ('正文事实',len((result.get('brief') or {}).get('facts',[])),'中文呈现并附原始链接','pulse')])
+    else: kpis([('研究证据',len(result.get('trace',[])),'工具返回记录，非独立来源数','layers'),
+        ('原文入口',len(sources),'去重后的可访问网址','radar'),('研究步骤',f"{sum(x.get('status') in ('checked','conflict','calculated','retrieved','not_applicable') for x in items)} / {len(items)}",'已取得材料或计算；核验程度见研究覆盖','check'),
         ('可用日线',len(data['candles']),'本次保存的行情序列','pulse')])
     with st.expander('导出 PDF / Markdown'):
         export_controls(result,root,visual_data=data)
     text,charts,evidence,coverage_tab=st.tabs(['研究报告','数据看板','原文与依据','研究覆盖'])
     with text:
         if result.get('review_status')=='model_evidence_review_completed': st.caption('已完成模型证据审阅；这不是审计或自动事实认证。')
-        st.markdown(result.get('report','暂无正文'))
-    with charts: render_dashboard(data,'reading-room',root)
+        st.markdown(result.get('report','暂无正文').split('## 原文与数据依据')[0])
+        st.caption('完整原文索引见「原文与依据」；正文引用可直接打开相应材料或计算说明。')
+    with charts:
+        if result.get('research_type')=='intelligence':
+            section('来源与材料分布','RESEARCH MATERIALS','radar')
+            if articles:
+                frame=pd.DataFrame([{'标题':a['title'],'来源站点':urlsplit(a['url']).hostname,
+                    '发布时间':a.get('published'),'正文覆盖':a.get('coverage'),'原文':a['url']} for a in articles])
+                counts=frame['来源站点'].value_counts()
+                fig=go.Figure(go.Bar(x=counts.values,y=counts.index,orientation='h',marker_color='#77b6df'))
+                fig.update_layout(template='plotly_dark',height=320,xaxis_title='本轮取得材料数',
+                    paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',margin=dict(l=12,r=12,t=20,b=20))
+                st.plotly_chart(fig,width='stretch',key='intelligence-report-sources',config={'displayModeBar':False})
+                st.dataframe(frame,hide_index=True,width='stretch',column_config={'原文':st.column_config.LinkColumn('原文')})
+                st.caption('材料分布只描述本次研究范围；未采用及证据不足的线索不能算作结论依据。')
+        else: render_dashboard(data,'reading-room',root)
     with evidence:
         if not sources: st.info('本次没有保存可公开跳转的原文链接；下方保留工具证据。')
         from .report_presentation import markdown_link
@@ -125,7 +155,20 @@ def render_report(result,root):
                 st.write(str(entry.get('id',''))+' · '+entry.get('tool',''))
                 st.json(entry.get('result'),expanded=False)
     with coverage_tab:
-        if not items: st.info('这份历史报告未保存结构化覆盖清单；不据此认定已完成全面核查。')
+        from .research_completion import process_log
+        stages=result.get('research_process') or process_log(result.get('trace',[]))
+        st.markdown('#### 研究过程与执行结果')
+        st.caption('记录已完成的检索、核验与计算，以及尚未解决的事项。')
+        for stage in stages:
+            st.write(stage['stage']+' · '+stage['status'])
+        if result.get('report_review'):
+            review=result['report_review']
+            st.markdown('#### 证据审阅记录')
+            st.write(review['summary'])
+            st.caption('独立校对 · '+str(review.get('passages',1))+' 个片段 · 研究推理 '+str(review.get('research_reasoning_effort','high'))+' / 校对推理 '+str(review.get('reasoning_effort','high')))
+            for edit in review.get('corrections',[]):
+                st.write(edit.get('reason','已按所列证据修正表述。'))
+        if not items and result.get('research_type')!='intelligence': st.info('这份历史报告未保存结构化覆盖清单；不据此认定已完成全面核查。')
         for item in items:
             with st.container(border=True):
                 st.markdown('**'+item['label']+'** · '+STATUS.get(item['status'],item['status']))

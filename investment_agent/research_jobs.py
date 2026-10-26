@@ -44,7 +44,8 @@ class ResearchJobs:
                     agent.coverage.items=saved.get('coverage',agent.coverage.items)
                 # A resume receives the remaining budget, not a new allowance.
                 for k in ('model_calls','input_tokens','output_tokens'):
-                    setattr(budget,k,saved.get('budget',{}).get(k,0))
+                    final_usage=json.loads(task.get('result') or '{}').get('budget_usage',{})
+                    setattr(budget,k,max(saved.get('budget',{}).get(k,0),final_usage.get(k,0)))
                 agent.service.calls=saved.get('data_calls',0)
             def checkpoint(graph):
                 self.store.checkpoint(tid,safe({'graph':graph,'coverage':agent.coverage.items,
@@ -56,8 +57,12 @@ class ResearchJobs:
                 question+='\n用户自述投资约束（不是市场数据）：'+json.dumps(profile['constraints'],ensure_ascii=False)
             result=asyncio.run(agent.ask(question,progress=lambda s:self.store.progress(tid,s),history=history))
             result['budget_usage']={k:getattr(budget,k) for k in ('model_calls','input_tokens','output_tokens')}
+            saved=json.loads(self.store.task(tid)['checkpoint'] or '{}')
+            if saved.get('graph'):
+                saved['budget']=result['budget_usage']
+                self.store.checkpoint(tid,safe(saved,secrets))
             result['task_id']=tid
-            partial=any(s in result['report'][:90] for s in ('预算','报告生成未完成','未生成完整结论','证据审阅未完成')) or self.store.task(tid)['status']=='cancelled'
+            partial=result.get('status')=='partial' or any(s in result['report'][:90] for s in ('预算','报告生成未完成','未生成完整结论','证据审阅未完成')) or self.store.task(tid)['status']=='cancelled'
             self.store.finish(tid,result,'partial' if partial else 'completed')
         except Exception as exc:
             text=safe(str(exc),secrets) if isinstance(exc,DataError) else type(exc).__name__+'：运行失败，已保存进度。'

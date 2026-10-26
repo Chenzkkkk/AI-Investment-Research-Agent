@@ -79,6 +79,33 @@ BASE_FACTORS={
 class CoverageChecklist:
     items: dict = field(default_factory=lambda:{k:{'label':v,'status':'not_run','claim':'','evidence_ids':[]} for k,v in BASE_FACTORS.items()})
 
+    def observe(self, trace):
+        """Execution is derived from actual payloads, never from model promises."""
+        mapping={'business-industry':'business','macro-policy':'policy','governance':'governance',
+                 'counter-evidence':'counter','technical-analysis':'market','financial-quality':'financial','valuation':'valuation'}
+        for entry in trace:
+            result=entry.get('result',{}); data=result.get('data') or {}
+            if not isinstance(data,dict): continue
+            tool=entry.get('tool'); skill=data.get('skill') or entry.get('arguments',{}).get('name')
+            payload=data.get('data',{}) if data.get('skill') else data
+            factor='financial' if tool=='financial_model' else mapping.get(skill) if tool=='execute_professional_skill' else 'market' if tool in ('load_history','analyze_factors') else 'counter' if tool=='research_perspective' and entry.get('arguments',{}).get('role') in ('bear','review') else None
+            if not factor: continue
+            substantive=result.get('ok') is True and bool(payload) and payload.get('evidence_status')!='missing'
+            if factor=='financial': substantive=substantive and bool(payload.get('analysis',{}).get('rows'))
+            current=self.items[factor]
+            if current['status'] in ('checked','conflict'): continue
+            status='calculated' if substantive and factor in ('financial','valuation','market') else 'retrieved' if substantive else 'missing'
+            if current['status'] in ('calculated','retrieved') and status=='missing': continue
+            self.items[factor]={**current,'status':status,'evidence_ids':list(dict.fromkeys(current['evidence_ids']+[entry['id']])),
+                'claim':{'calculated':'已执行取数与程序计算；计算完成不等于全部假设和原文已交叉核验。',
+                         'retrieved':'已执行调查并取得材料；仍需判断证据是否支持具体结论。',
+                         'missing':'已执行调查，但未取得所需数据；详见来源错误及解析缺口。'}[status]}
+            if factor=='financial' and any('enterprise_value' in v for v in (payload.get('dcf') or {}).get('scenarios',{}).values()):
+                previous=self.items['valuation']
+                if previous['status'] not in ('checked','conflict'):
+                    self.items['valuation']={**previous,'status':'calculated','claim':'已运行现金流估值情景，假设依据与股权桥接单列复核。','evidence_ids':[entry['id']]}
+        return self.summary()
+
     def update(self, entries, trace):
         allowed={'checked','conflict','missing','not_applicable','not_run'}
         known={x['id']:x for x in trace}
@@ -105,7 +132,7 @@ class CoverageChecklist:
 
     def summary(self):
         items=[{'factor':k,**v} for k,v in self.items.items()]
-        unknown=[x for x in items if x['status'] in ('missing','not_run','conflict')]
+        unknown=[x for x in items if x['status'] not in ('checked','not_applicable')]
         return {'items':items,'important_unknowns':unknown[:3],
                 'quality_gate':'incomplete' if unknown else 'covered_requires_judgment',
                 'note':'状态为研究覆盖及证据关联检查，不是自动语义核验、真实概率或收益预测。'}
@@ -132,7 +159,10 @@ async def execute(agent, name, inputs):
         issues=[{'type':'document_coverage','status':d.get('status'),'conflicts':d.get('conflicts',[]),'limits':d.get('limits',[])} for d in data.get('document_analysis',[])]
     elif name=='technical-analysis':
         from datetime import date,timedelta
-        end=now()[:10]; start=(date.fromisoformat(end)-timedelta(days=365)).isoformat()
+        # The OHLCV contract accepts completed daily bars only after 16:00 CST.
+        stamp=now(); end_day=date.fromisoformat(stamp[:10])
+        if stamp[11:13]<'16':end_day-=timedelta(days=1)
+        end=end_day.isoformat(); start=(end_day-timedelta(days=365)).isoformat()
         from .quant_data import collect_history
         from .quant import QuantLab
         snapshot=await collect_history(agent.service,[inputs['code']],start,end)

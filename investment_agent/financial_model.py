@@ -207,6 +207,9 @@ async def research_financials(settings,code,name,assumptions=None,service=None):
         'official_disclosures':official,'fallbacks':fallbacks,'dcf':None,
         'normalized_periods':normalized,'quality':quality_analysis(normalized['rows']),'document_analysis':document_analysis,
         'coverage_note':'目标近五年及八季；实际覆盖见periods。已披露不等于本轮已解析；接口失败、原文获取和字段解析分别记录。'}
+    from .capital_bridge import collect_bridge
+    try: result['capital_bridge']=await collect_bridge(settings,service,code,name,official)
+    except Exception as exc: result['capital_bridge']={'status':'incomplete','facts':{},'missing':['资本结构解析'],'error':getattr(exc,'code',type(exc).__name__)}
     annual=next((r for r in analysis['rows'] if r['period'].endswith('-12-31')),None)
     if assumptions and annual:
         result['dcf']=dcf_scenarios(annual['values'].get('revenue'),annual['period'],assumptions)

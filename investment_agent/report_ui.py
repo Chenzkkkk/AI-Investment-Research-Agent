@@ -144,9 +144,9 @@ def render_source_route(root: Path) -> bool:
         return True
     item=next((r for r in saved.get('trace',[]) if r['id']==source),None)
     if item:
-        st.markdown('## 本次研究的数据来源')
+        from .reader_evidence import render_evidence
         st.write(saved.get('question',''))
         st.caption('生成于 '+saved.get('created_at',''))
-        st.json(safe(item['result']))
+        render_evidence(item)
     else: st.error('未找到对应数据来源。')
     return True

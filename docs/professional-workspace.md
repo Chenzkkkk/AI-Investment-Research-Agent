@@ -38,3 +38,16 @@
 仍需逐步扩展的深度能力：扫描财报 OCR、不同年报版式的全面附注解析、逐版本宏观/财务历史库、金融企业专用模型、完整行业样本的长期样本外验证、自动跟踪每个研究判断的失效条件。当前产品会显示这些缺口，不冒充已完成。
 
 参考：[CFA CBOK](https://www.cfainstitute.org/programs/cfa-program/candidate-resources/cbok)、[投资管理流程](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/portfolio-management-overview)、[财报质量](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/evaluating-quality-financial-reports)、[财政部会计准则](https://kjs.mof.gov.cn/zt/kjzzss/kuaijizhunzeshishi/)、[国务院政策库](https://sousuo.www.gov.cn/zcwjk/)、[Damodaran 现金流方法](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/littlebook/cashflows.htm)。
+
+
+## 执行与来源改进（1.1）
+
+财务质量、估值和量价的覆盖状态由实际返回结果自动记录，区分已取材料、已计算、已交叉核查、失败和未执行。深度单公司任务在确认标的并取得财务数据后，补齐商业模式、政策、治理和技术调查，并在预算允许时调用已适配的 TradingAgents-CN 反证节点。资料不足保留缺口；不以提示词或状态更新代替研究。
+
+正文优先链接公告、财报及新闻原文。多源计算的本地入口提供中文方法、输入值及原文链接，原始JSON仅作为折叠开发者诊断。历史报告磁盘原件不改写，阅读层可根据保存的执行结果重建覆盖信息。
+
+每股估值从完整官方财报提取现金等价物、有息负债、租赁负债、少数股东和独立核验的股数，保留PDF页码、期间、单位和余额检查。经营现金保留、存款加回类别与折扣、少数股东估值和稀释均为显式情景假设；未确认项目不补零。安全边际使用同一证券、明确日期的未复权价格。财务接口和财务Skill共用这一流程；不以函数存在或覆盖标签代替实际计算。
+
+最终正文由已配置DeepSeek独立分段校对。研究推理沿用用户选择（默认high），校对使用low进行范围有限的数字口径与证据检查；每条修改要求唯一匹配原文并引用已取得的证据，所有片段成功后才整体应用。审阅摘要、修改理由、推理设置及用量可查看。截断、无效引用或预算不足会保留待复核状态，不把模型审阅称为审计认证。推理参数依据[DeepSeek官方文档](https://api-docs.deepseek.com/guides/thinking_mode/)。
+
+前沿情报使用独立 IntelligenceResearchAgent：中英检索规划、多来源材料汇集、最多六篇原文复读、中文融合及一次证据审阅。手动任务最多4次模型请求、12万输入/4万输出 token，与后台摘要每日预算分别记录。报告保存在本地报告库并支持PDF；无相关材料或预算不足时保存未完成状态，不补造信息。默认展示完成中文整理的简报，待处理的原始线索单独查看。来源站点数量不等于独立验证数量。

@@ -203,15 +203,26 @@ def chat(settings):
             question=st.text_area('研究问题',value=st.session_state.get('intel_chat_seed',''),placeholder='最近机器人商业化有哪些实质进展？',height=90)
             submit=st.form_submit_button('基于情报库研究',type='primary')
         if submit and question.strip():
-            from ..agent import ResearchAgent
-            with st.status('正在检索情报证据…') as status:
+            from .research_agent import IntelligenceResearchAgent
+            with st.status('正在检索情报证据…',expanded=True) as status:
                 try:
-                    result=asyncio.run(ResearchAgent(settings).ask('【通用前沿情报研究】'+question))
-                    st.session_state.intel_answer=result['report']; status.update(label='研究完成',state='complete')
+                    result=asyncio.run(IntelligenceResearchAgent(settings).ask(question,progress=lambda message:status.write(message)))
+                    st.session_state.intel_answer=result['report']
+                    st.session_state.intel_result=result
+                    status.update(label='研究报告已保存' if result['status']=='completed' else '部分完成，证据已保存',state='complete' if result['status']=='completed' else 'error')
                     st.session_state.pop('intel_chat_seed',None)
                 except Exception as exc:
                     status.update(label='研究未完成',state='error'); st.error('错误类型：'+type(exc).__name__)
+        st.caption('独立情报 Agent：规划 → 多源检索 → 原文核对 → 中文融合 → 反证复核。手动研究最多4次模型请求，与后台每日摘要预算分别记录。')
         if st.session_state.get('intel_answer'): st.markdown(st.session_state.intel_answer)
+        if st.session_state.get('intel_result'):
+            result=st.session_state.intel_result
+            from pathlib import Path
+            st.link_button('打开完整报告与 PDF 导出','?report='+Path(result['report_file']).stem)
+            with st.expander('研究过程与用量'):
+                for step in result['research_process']:st.write(step['stage']+' · '+step['status'])
+                st.caption('模型调用 '+str(result['budget_usage']['model_calls'])+' 次；输入 '+str(result['budget_usage']['input_tokens'])+'，输出 '+str(result['budget_usage']['output_tokens'])+' token。')
+
 
 
 def render(settings):
@@ -238,6 +249,11 @@ def render(settings):
     follows=store.follows(); sources=store.sources()
     kpis([('收录事件',len(rows),'当前筛选，最多展示600条','layers'),('中文已整理',sum(bool(r['analysis']) for r in rows),'其余仍可阅读来源','check'),
           ('已关注',len(follows),'主题 / 人物 / 机构','focus'),('接通来源',sum(r['status'].startswith('已接通') for r in sources),'详见来源与运行','radar')])
+    from .research_agent import chinese
+    pending=[r for r in rows if not chinese((r.get('analysis') or {}).get('summary_zh'))]
+    show_pending=st.toggle('查看待整理原始线索（尚不是中文简报）',False)
+    if pending:st.caption(f'{len(pending)} 条材料尚未完成中文整理；额度不足时保持待处理，不冒充已完成简报。')
+    if not show_pending:rows=[r for r in rows if r not in pending]
     if page=='主题追踪':
         topic_options=sorted({t for r in rows for t in (r['analysis'] or {}).get('topics',[])})
         topic=st.selectbox('主题',['全部']+topic_options)

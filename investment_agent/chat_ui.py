@@ -12,7 +12,7 @@ from .sector_screen import PROFILES
 def jobs(root): return ResearchJobs(root)
 
 
-STATUS={'checked':'已核查','conflict':'存在矛盾','missing':'缺少数据','not_applicable':'不适用','not_run':'尚未执行'}
+STATUS={'checked':'已核查','calculated':'已计算，待复核假设','retrieved':'已取得材料，待核查','conflict':'存在矛盾','missing':'已执行但数据不足','not_applicable':'不适用','not_run':'尚未执行'}
 
 
 def result_cards(result,settings):
@@ -37,7 +37,11 @@ def render(settings):
             st.session_state.research_conversation=store.create_conversation(); conversations=store.conversations()
         ids=[x['id'] for x in conversations]
         if st.session_state.get('research_conversation') not in ids: st.session_state.research_conversation=ids[0]
-        cid=st.selectbox('研究会话',ids,format_func=lambda x:next(c['title'] for c in conversations if c['id']==x),key='research_conversation')
+        from datetime import datetime
+        labels={c['id']:datetime.fromtimestamp(c['created']).strftime('%m-%d %H:%M')+' · '+c['title'][:42]+' · '+c['id'][:4] for c in conversations}
+        # Distinct values need distinct display labels too: repeated research
+        # questions otherwise select an older conversation on a widget rerun.
+        cid=st.selectbox('研究会话',ids,format_func=lambda x:labels[x],key='research_conversation')
     profile=store.setting('investment_profile',{'style':'value','constraints':{}})
     st.markdown('## 从一个问题，开始研究')
     st.caption('前沿消息 · 公司财务 · 估值与风险。研究过程和证据会自动保存在本机。')

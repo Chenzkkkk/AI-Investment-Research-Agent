@@ -99,6 +99,8 @@ def projections(result, root):
                     'rows':rows,'id':entry.get('id'),'as_of':payload.get('as_of'),
                     'coverage_note':payload.get('coverage_note',''),'dcf':payload.get('dcf'),
                     'quality':payload.get('quality',{}),'documents':payload.get('document_analysis',[])})
+            if payload.get('capital_bridge'):
+                valuations.append({'id':entry.get('id','')+'-bridge','data':{'capital_bridge':payload['capital_bridge'],'equity_valuation':payload.get('equity_valuation')},'assumptions':{},'label':str(payload.get('name') or '公司')+' · 资本结构与每股估值'})
             if payload.get('dcf'):
                 valuations.append({'id':entry.get('id',''),'data':payload['dcf'],'assumptions':{},
                     'sources':[],'label':str(payload.get('name') or '公司')+' · FCFF 情景'})
@@ -132,7 +134,19 @@ def projections(result, root):
             for field in ('dcf','quality','documents'):
                 if item.get(field): previous[field]=item[field]
         else: unique_finances[signature]=item
-    return {'finances':list(unique_finances.values()),'candles':candles,'models':models,'valuations':valuations,'warnings':warnings,'joint':joint}
+    unique_candles={}
+    for item in candles:
+        key=(item['label'],item['meta'].get('adjustment'))
+        previous=unique_candles.get(key)
+        rank=lambda x:(str(x['frame'].date.max()),len(x['frame']))
+        if previous is None or rank(item)>rank(previous):unique_candles[key]=item
+    unique_valuations={}
+    for item in valuations:
+        key=item['label'] if item['data'].get('capital_bridge') else item['id']
+        previous=unique_valuations.get(key)
+        if previous is None or item['data'].get('equity_valuation') or not previous['data'].get('equity_valuation'):
+            unique_valuations[key]=item
+    return {'finances':list(unique_finances.values()),'candles':list(unique_candles.values()),'models':models,'valuations':list(unique_valuations.values()),'warnings':warnings,'joint':joint}
 
 
 def financial_frame(item):
@@ -143,16 +157,18 @@ def financial_frame(item):
 
 def source_links(result):
     """Published links only, deduplicated. Do not export arbitrary tool credentials."""
-    links={}
-    def walk(value):
-        if isinstance(value,dict):
-            url=external_url(value.get('url'))
-            if url: links.setdefault(url,str(value.get('title') or value.get('name') or '原始材料'))
-            for k,v in value.items():
-                if k not in ('body','raw','content','requests'): walk(v)
-        elif isinstance(value,list):
-            for v in value: walk(v)
-    walk(result.get('trace',[]))
+    from .reader_evidence import originals, readable_url
+    links={x['url']:x['title'] for x in originals(result.get('trace',[]))}
     for label,url in re.findall(r'\[([^\]]+)\]\((https?://[^\s)]+)\)',result.get('report','')):
-        if external_url(url): links[url]=label
+        if readable_url(url) and url not in links: links[url]=label
     return [{'title':label,'url':url} for url,label in links.items()]
+
+
+def intelligence_articles(result):
+    articles={}
+    for entry in result.get('trace',[]):
+        value=entry.get('result',{})
+        if value.get('source')=='intelligence_primary_materials':
+            for article in value.get('data',{}).get('articles',[]):
+                articles[article['id']]=article
+    return list(articles.values())
