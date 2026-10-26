@@ -227,16 +227,21 @@ def chat(settings):
 
 def render(settings):
     store=Store(settings.root)
+    from .materials_ui import render_library,article_detail
+    if st.session_state.get('intel_article'):
+        article_detail(settings,store,st.session_state.intel_article);return
     if st.session_state.get('intel_event'):
         detail(settings,store,st.session_state.intel_event);return
     hero('前沿情报','追踪真实变化，连接政策、科技、产业与新的商业可能。','GLOBAL / FRONTIER INTELLIGENCE')
     if st.button('↻ 刷新已收录数据',help='只重新读取本地情报库，不采集、不调用模型。'): st.rerun()
-    page=st.radio('情报视图',['今日重点','主题追踪','人物与机构','我的关注','来源与运行'],horizontal=True,label_visibility='collapsed')
+    page=st.radio('情报视图',['全部材料','精选简报','主题追踪','人物与机构','我的关注','来源与运行'],horizontal=True,label_visibility='collapsed')
     if page=='来源与运行': run_panel(settings,store);return
+    if page=='全部材料':render_library(settings,store);return
+    if page=='精选简报':st.info('这是自动整理的事件精选，不代表全部信息。你可以在「全部材料」选择任何文章单独生成中文简报。')
     chat(settings)
     c=st.columns([2,1,1,1])
     query=c[0].text_input('搜索事件、机构、人物',key='intel-query')
-    days=c[1].selectbox('时间范围',[1,7,30,0],format_func=lambda v:{1:'最近24小时',7:'最近7天',30:'最近30天',0:'全部（含待核实时间）'}[v],index=0 if page=='今日重点' else 1)
+    days=c[1].selectbox('时间范围',[1,7,30,0],format_func=lambda v:{1:'最近24小时',7:'最近7天',30:'最近30天',0:'全部（含待核实时间）'}[v],index=0 if page=='精选简报' else 1)
     domain=c[2].selectbox('领域',['全部']+DOMAINS)
     region=c[3].selectbox('来源地区',['全部','中国','美国','全球'])
     tier=st.selectbox('证据类型',['全部','原始发布','媒体报道','社区线索','项目自述（社区发现）'])
@@ -287,7 +292,7 @@ def render(settings):
             key={'收藏':'star','稍后读':'later','已读':'read_at'}[mode];rows=[r for r in rows if r['marks'].get(key)]
     if not rows:
         st.info('当前范围暂无事件。可切换最近7天或全部；来源不可用与没有新消息可在「来源与运行」区分。');return
-    if page=='今日重点':
+    if page=='精选简报':
         main,side=st.columns([3,1])
         ranked=sorted(rows,key=lambda r:(any(t.casefold() in dumps(r).casefold() for t in follows),bool(r['analysis']),r['published'] or ''),reverse=True)
         highlights=[]; per_domain={}

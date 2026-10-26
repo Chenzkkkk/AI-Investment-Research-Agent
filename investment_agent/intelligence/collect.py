@@ -138,8 +138,25 @@ def discover(fetcher, source, previous):
     return entries,meta,False
 
 
+def catalog_discoveries(store,changed_urls=None):
+    """Publish every discovered source entry before applying body-download budgets."""
+    with store.db() as db:
+        rows=list(db.execute('SELECT q.payload,s.config FROM crawl_queue q JOIN sources s ON s.id=q.source_id WHERE NOT EXISTS(SELECT 1 FROM articles a WHERE a.url=q.url)'))
+    added=0
+    for row in rows:
+        entry=json.loads(row['payload']);source=json.loads(row['config'])
+        try:entry['url']=canonical(entry['url'])
+        except (ValueError,FetchError):continue
+        _,changed=store.ingest({**entry,'body':'','coverage':'待补正文·仅摘要' if entry.get('excerpt') else '待补正文·仅标题',
+            'source_id':source['id'],'domain':source['domain'],'region':source['region'],'tier':source['tier']})
+        added+=int(changed)
+        if changed and changed_urls is not None:changed_urls.add(entry['url'])
+    return added
+
+
 def collect(store,force=False,source_ids=None):
     settings=store.settings(); maximum=settings['max_documents']; fetched=0; inserted=0; results=[]
+    changed_urls=set();inserted+=catalog_discoveries(store,changed_urls)
     fetcher=Fetcher(); cutoff=(datetime.now(TZ)-timedelta(days=7)).isoformat(timespec='seconds')
     try:
         for row in store.sources():
@@ -163,6 +180,7 @@ def collect(store,force=False,source_ids=None):
                         if item['published'] and item['published']<source_cutoff:continue
                         db.execute('INSERT OR IGNORE INTO crawl_queue VALUES(?,?,?,?,0)',(s['id'],item['url'],dumps(item),stamp))
                     queued=[json.loads(r[0]) for r in db.execute('SELECT payload FROM crawl_queue WHERE source_id=? AND done=0 ORDER BY queued,url LIMIT 150',(s['id'],))]
+                inserted+=catalog_discoveries(store,changed_urls)
                 entries=queued+[x for x in discovered if x['url'] not in {q['url'] for q in queued}]
                 new_count=0; summary_count=0; errors=0
                 # Per-source fairness prevents an initial large feed consuming the entire run.
@@ -176,7 +194,7 @@ def collect(store,force=False,source_ids=None):
                     with store.db() as db:
                         old=db.execute('SELECT * FROM articles WHERE url=?',(entry['url'],)).fetchone()
                     # Recheck known documents once daily to find corrections, independent of feed metadata.
-                    if old and old['updated'][:10]==stamp[:10]:
+                    if old and old['body'] and old['updated'][:10]==stamp[:10]:
                         with store.db() as db:db.execute('UPDATE crawl_queue SET done=1 WHERE source_id=? AND url=?',(s['id'],entry['url']))
                         continue
                     body=''; coverage='仅摘要'
@@ -193,7 +211,7 @@ def collect(store,force=False,source_ids=None):
                     except Exception as exc:
                         errors+=1
                         # Keep a known full document during a transient fetch failure.
-                        if old: continue
+                        if old and old['body']: continue
                     if s['kind']=='hn' and entry.get('external_url') and fetched<maximum:
                         # Preserve the community item and independently retrieve the linked publisher.
                         try:
@@ -205,6 +223,7 @@ def collect(store,force=False,source_ids=None):
                                     body=linked['body'],excerpt='发现入口：'+entry['url'],author=linked['author'],coverage='正文已提取',
                                     source_id=s['id'],domain=s['domain'],region=s['region'],tier='项目自述（社区发现）'))
                                 inserted+=int(new)
+                                if new:changed_urls.add(external)
                         except Exception: pass
                     if not body: summary_count+=1
                     # HN is a community statement; linked publisher identity is not HN identity.
@@ -213,6 +232,7 @@ def collect(store,force=False,source_ids=None):
                     _,changed=store.ingest(article)
                     with store.db() as db:db.execute('UPDATE crawl_queue SET done=1 WHERE source_id=? AND url=?',(s['id'],entry['url']))
                     inserted+=int(changed); new_count+=1
+                    if changed:changed_urls.add(article['url'])
                 status='已接通·无新条目' if unchanged or not entries else '已接通'
                 if errors: status='已接通·部分正文失败'
                 store.source_state(s['id'],status=status,checked=stamp,success=stamp,error=(f'{errors}篇正文读取失败；仅保留可用摘要' if errors else ''),
@@ -224,5 +244,5 @@ def collect(store,force=False,source_ids=None):
                 store.source_state(s['id'],status='暂时失败',checked=stamp,error=message[:200],next_due=backoff)
                 results.append(dict(source=s['name'],status='暂时失败',error=message[:200]))
     finally: fetcher.close()
-    return dict(downloads=fetched,new_or_updated=inserted,sources=results,
+    return dict(downloads=fetched,new_or_updated=len(changed_urls),sources=results,
                 coverage='增量最多补查近7天；无历史记录的来源初次回填近30天并按原始时间展示。列表截断、下线文章和关机期间内容可能无法补齐。')

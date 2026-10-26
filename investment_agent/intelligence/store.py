@@ -50,6 +50,10 @@ class Store:
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,started TEXT,finished TEXT,status TEXT,summary TEXT);
             CREATE TABLE IF NOT EXISTS usage(day TEXT PRIMARY KEY,events INTEGER DEFAULT 0,input INTEGER DEFAULT 0,output INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS crawl_queue(source_id TEXT,url TEXT,payload TEXT,queued TEXT,done INTEGER DEFAULT 0,PRIMARY KEY(source_id,url));
+            CREATE TABLE IF NOT EXISTS material_briefs(article_id TEXT PRIMARY KEY,status TEXT,fingerprint TEXT,
+              brief TEXT,error TEXT,usage TEXT,started TEXT,finished TEXT);
+            CREATE TABLE IF NOT EXISTS material_brief_versions(id INTEGER PRIMARY KEY,article_id TEXT,
+              fingerprint TEXT,brief TEXT,usage TEXT,created TEXT);
             CREATE INDEX IF NOT EXISTS ix_event_time ON events(published);
             CREATE INDEX IF NOT EXISTS ix_article_event ON articles(event_id);
             CREATE INDEX IF NOT EXISTS ix_article_hash ON articles(content_hash);
@@ -58,6 +62,9 @@ class Store:
             for s in SOURCES:
                 db.execute('INSERT OR IGNORE INTO sources(id,config,status) VALUES(?,?,?)',
                            (s['id'],dumps(s),'候选·未接入' if s['kind']=='candidate' else '待验证'))
+                old=db.execute('SELECT config FROM sources WHERE id=?',(s['id'],)).fetchone()
+                if old and json.loads(old[0])['kind']=='candidate' and s['kind']!='candidate':
+                    db.execute("UPDATE sources SET config=?,status='待验证',next_due=NULL WHERE id=?",(dumps(s),s['id']))
             for k,v in DEFAULTS.items():
                 db.execute('INSERT OR IGNORE INTO settings VALUES(?,?)',(k,dumps(v)))
 
