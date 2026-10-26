@@ -37,6 +37,8 @@ def article_detail(settings,store,aid):
     a=material(store,aid)
     if not a:st.error('找不到材料');return
     if st.button('← 返回全部材料'):
+        for key in list(st.session_state):
+            if key.startswith('materials-'):st.session_state.pop(key,None)
         st.session_state.pop('intel_article',None);st.rerun()
     st.markdown('## '+a['title'])
     st.caption(a['source_name']+' · '+a['tier']+' · '+(a['published'] or '发布时间未核实'))
