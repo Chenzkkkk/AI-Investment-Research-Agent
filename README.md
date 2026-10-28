@@ -4,7 +4,7 @@
 
 ![知衡产品首页](docs/preview.png)
 
-本地中文投资研究工作台。产品首页介绍研究流程，一键进入 Agent 对话、研究示例或报告库。按问题选择数据工具与专业方法，展示财务趋势、来源、研究盲区和有条件的判断。投资风格默认价值投资，可选择成长、短线、事件驱动或综合研究。
+一个用自然语言组织投研的本地 Demo：提出公司或行业问题，Agent 查找资料、调用分析方法，生成包含财务、估值、K 线和原始出处的研究报告。报告可回看、收藏及导出 PDF。投资风格默认价值投资，也支持成长、短线、事件驱动和综合研究。
 
 产品支持跨行业研究；AI、机器人与前沿科技是本仓库选用的公开展示案例，不是产品的行业限定。具体覆盖程度取决于实际取得的数据和已验证的专业方法。
 
@@ -16,24 +16,35 @@
 - **专业方法**：14 个版本化 Skills，涵盖财务质量、资本配置、三表情景、估值、统计、组合、政策、治理与反证。公式交给 Python，解释交给模型。
 - **公司财务**：公开三表及官方年报补查，累计季度拆分与 TTM、杜邦、现金质量和附注线索。三表情景、DCF 敏感性与股权桥接可编辑重算。
 - **行业研究**：候选池上限 500、初筛比较前 20、深研最多 5；显示实际取得数量、日期及淘汰原因，不宣称覆盖全市场。
-- **前沿情报**：八个领域的事件、来源、人物观点、主题演进及关注；与股票研究共用证据。
+- **前沿情报**：八个领域的事件、来源、人物观点、主题演进及关注；与股票研究共用证据。「全部材料」按来源、时间与领域筛选和分页，保留原文链接；任何文章均可手动选择生成中文简报，推荐精选不会隐藏其余材料。
 - **多视角审阅**：适配 TradingAgents-CN 的 8 类 Apache-2.0 角色方法，按任务选择，而非每次运行全部角色。
 
 数据不足时允许“暂不推荐”。研究覆盖不代表成功概率；计算通过也不表示假设已验证。当前为单用户本地应用，不是公网多租户服务。
 
+## 我怎样用 vibe coding 做这个 Demo
+
+我提出研究需求、检查界面和报告，再通过 **Codex 与 Kimi** 迭代功能、数据流程和测试。运行时使用已配置的 DeepSeek 做资料归纳、研究规划与解释；财务公式、指标和校验由 Python 执行。TradingAgents-CN 的可复用角色方法经适配后接入研究流程，许可与实际复用范围见下文文档。
+
+Kimi 的专业数据能力也是探索方向。其官方插件目录包括同花顺、天眼查等数据库，可用于金融与企业信息研究；**这是 Kimi 平台的能力说明，仓库不附带这些付费数据库的账号、授权或完整连接服务**。本项目默认走公开数据路线。[Kimi 官方插件说明](https://www.kimi.com/help/kimi-work/plugin-center)
+
+研究流程：**问题与偏好 → 资料及数据 → 专业方法与反证 → 可追溯报告 → 历史复盘**。
+
 ## 启动
 
-```bash
+```powershell
 git clone https://github.com/Chenzkkkk/AI-Investment-Research-Agent.git
 cd AI-Investment-Research-Agent
 conda env create -f environment.yml
 conda activate investment-agent
+# Windows PowerShell：先创建本地配置，再填写自己的模型凭证
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+# 用本地编辑器填写 .env 中的 DEEPSEEK_API_KEY
 python -m streamlit run app.py
 ```
 
 已有 `investment-agent` 环境时先检查并复用，再在该环境执行 `python -m pip install -r requirements.txt`。不要安装到 base。
 
-浏览 http://127.0.0.1:8501 。把 `.env.example` 复制为 `.env` 并在本机配置自己的模型凭证。DeepSeek 默认 `deepseek-flash`、推理 `high`，推理强度可在网页切换；模型和地址以账号支持情况为准。模型调用可能产生供应商费用。
+浏览 http://127.0.0.1:8501 。上述复制命令适用于 Windows PowerShell；macOS/Linux 使用 `cp .env.example .env`。已有 `.env` 时保留原配置。DeepSeek 默认 `deepseek-flash`、推理 `high`，推理强度可在网页切换；模型和地址以账号支持情况为准。模型调用可能产生供应商费用。仓库没有预置密钥，首次运行需要配置自己的凭证。
 
 公开数据默认启用，妙想可选并需自己的权限，Choice 默认关闭。第三方 SDK、账号激活文件、妙想供应商脚本和私有数据不随仓库分发。读取已有报告或浏览情报不触发模型。
 
@@ -60,3 +71,9 @@ python -m investment_agent.intelligence.worker
 方法覆盖参考 [CFA CBOK](https://www.cfainstitute.org/programs/cfa-program/candidate-resources/cbok)，不宣称 CFA 认证。适配的上游方法详见 [许可与复用清单](docs/upstream-reuse.md)、[TradingAgents-CN](https://github.com/hsliuping/TradingAgents-CN)。财务计算为本项目依据公开方法独立实现。
 
 本项目用于研究，不连接交易执行。个人问题、报告、账户和数据库保留本地；公开科技示例为单独审查的有日期研究，不能视为实时推荐或投资收益。
+
+## 隐私与分享
+
+`.env`、令牌、日志、账户文件、本地数据与「分享」目录均不属于公开交付内容。运行后的报告和情报库保存在本地 `data/`；请不要强制提交忽略文件。公开展示案例与个人研究档案分别管理。向 GitHub 发布代码不会上传本机数据库，也不会自动托管网页。
+
+公开的是已审查的轻量研究应用，不包含上游受限目录、供应商 SDK 或付费数据授权。部署到互联网前仍需补充身份认证、用户隔离和服务端密钥管理。

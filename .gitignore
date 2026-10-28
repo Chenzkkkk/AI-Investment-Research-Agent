@@ -1,4 +1,5 @@
 # Only reviewed application assets belong in the public repository.
+/分享/
 /*
 !/.gitignore
 !/.gitattributes
